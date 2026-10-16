@@ -185,7 +185,7 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
       <div className={`td mono ${v == null ? 'muted' : ''}`} data-col={col.key} title={v == null ? row.call.error_message || 'No provider call ID' : String(v)}>
         {row.call.source === 'sim' && <span className="sim-tag" title="Simulation run">SIM</span>}
         {/* Cekura leaves this empty when it couldn't match the run to a provider call; say so instead of a bare dash. */}
-        {v == null ? <span className="ellipsis no-id">⚠ not linked to a provider call</span> : <span className="ellipsis">{v}</span>}
+        {v == null ? <span className="ellipsis no-id">⚠ not linked to a provider call</span> : <><span className="ellipsis">{v}</span><CopyIcon text={String(v)} title="Copy call ID" /></>}
       </div>
     )
   }
@@ -193,13 +193,21 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
     return (
       <div className={`td ${v == null || v === BRANCH_PENDING ? 'muted' : 'mono'}`} data-col={col.key} title={String(v ?? '')}>
         <span className="ellipsis">{v ?? '—'}</span>
+        {v != null && v !== BRANCH_PENDING && <CopyIcon text={String(v)} title={col.key === 'branch' ? 'Copy branch ID' : 'Copy agent ID'} />}
       </div>
     )
   }
   if (col.key === 'success') return <div className="td" data-col={col.key}><StatusDot value={v} /></div>
   if (col.kind === 'binary') return <div className="td" data-col={col.key}><MetricIcon value={v} /></div>
   if (col.kind === 'enum' && v != null) {
-    return <div className="td" data-col={col.key} title={String(v)}><span className="tag">{String(v)}</span></div>
+    // IDs that come in as metric values (business_id) get the same copy affordance as the other IDs.
+    const isId = col.label.toLowerCase().endsWith('_id')
+    return (
+      <div className="td" data-col={col.key} title={String(v)}>
+        <span className={`tag ${isId ? 'mono' : ''}`}>{String(v)}</span>
+        {isId && <CopyIcon text={String(v)} title={`Copy ${col.label}`} />}
+      </div>
+    )
   }
   const text = formatCell(col, v)
   if (isPhoneNumber(v)) {
