@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+
+# Saved views are personal; the dev server writes them here.
+views.json
+views.json.tmp

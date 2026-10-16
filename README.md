@@ -1,0 +1,122 @@
+# Cekura Call Viewer
+
+A fast, local alternative to the Cekura dashboard's call list. It loads every call log and simulation run in a time range up front, so you can filter and sort by any metric instantly, choose which metrics appear as columns, fold simulation runs under their result, and read a call's metrics, transcript, tool calls and recording without leaving the list. Every row links back to Cekura and to the call in ElevenLabs or Retell.
+
+It runs on your machine against the Cekura API with your own API key. There's nothing to deploy.
+
+## Quick start
+
+You need Node 22.12+ and pnpm (`brew install pnpm`, or `corepack enable`).
+
+```sh
+git clone git@github.com:Boulevard/cekura-call-viewer.git
+cd cekura-call-viewer
+pnpm install
+cp .env.example .env.local   # then set CEKURA_API_KEY
+pnpm dev                     # http://localhost:5173
+```
+
+To get a Cekura API key, create one in the Cekura dashboard ([docs](https://docs.cekura.ai/api-reference/user/create-api-key)). If you already have the ai-receptionist repo set up, `packages/cekura/.env.local` there has one.
+
+## Configuration
+
+All settings go in `.env.local` (gitignored). Only the API key is required.
+
+| Variable | Default | What it's for |
+| --- | --- | --- |
+| `CEKURA_API_KEY` | – | Cekura API key. The dev server adds it to API requests, so it never reaches the browser. |
+| `VITE_CEKURA_PROJECT_ID` | `3201` | Project the app opens on before you've picked one. |
+| `ELEVENLABS_MANAGED_AGENTS_DIR` | `~/boulevard/ai-receptionist/packages/elevenlabs/agents/_managed` | Folder of `<family>/environments.json` files used to show ElevenLabs branch and agent names instead of raw IDs. Without it you just see the IDs. |
+
+The ⚙ Settings dialog also lets you set an API key in the browser (stored in localStorage), raise the cap on how many calls are loaded, and change the ElevenLabs and Retell link formats.
+
+## Using it
+
+### Loading data
+
+Pick a project, an optional agent ID, and a time range, then use the **Calls** and **Simulations** toggles to choose what to load. Turn both on to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
+
+Simulation runs are found through their results (test-suite executions) created in the range. They show a `SIM` tag, and the **Simulation** column group adds result, scenario, personality, expected outcome (met / partial / not met), evaluation status and agent version.
+
+### Columns, sorting and filtering
+
+- **Columns:** open **Columns** to show, hide and drag-reorder any field or metric found in the loaded data. Each metric shows its pass rate and failure count for the loaded calls, and there's a one-click button to show every metric with failures. Drag a header's edge to resize.
+- **Header summaries:** pass rate and failure count for pass/fail metrics, average for numbers, number of distinct values for text. Click a header's `N✗` to show only the failures.
+- **Sorting:** click a header; shift-click to add a secondary sort. Empty values always sort last.
+- **Filtering:** use **+ Filter** or a header's `⋮` menu. Value lists come with live counts, numbers and times filter by range, and text filters by substring. Alt-click any cell to filter to that value.
+- **Search:** the search box matches call IDs, phone numbers, agent names, result and scenario names, and text metric values.
+- **CSV:** exports the filtered rows with the visible columns, plus Cekura and provider links.
+
+Metrics that Cekura skipped (trigger not met, or `VALID_SKIP`) show as **N/A**. Cekura's own list reports them as passed, so pass rates here can be lower than in the dashboard.
+
+### Result groups
+
+With **Group by result** on, runs from the same result fold under a result row, like Cekura's result page. The row shows the run count, how many passed, how many met the expected outcome, and a per-column rollup. Filters apply to the runs inside a group, and results with a single matching run show as a plain row. Use **Expand all** / **Collapse all**, click a result row, or press `Space` on it.
+
+### Provider agent and branch
+
+The **Provider agent** column shows the ElevenLabs or Retell agent that handled each call or run, and **Branch (11Labs)** shows the ElevenLabs branch. Names come from the `environments.json` files described above, and the raw IDs show on hover. Branches for production ElevenLabs calls need a large extra request per call (about 250KB), so they're only fetched while the Branch column is shown or used in a filter or sort.
+
+### Call detail
+
+Click a row, or press `Enter`. The panel shows:
+
+- Every metric with Cekura's explanation, failures first.
+- The recording, with playback speed controls. Click any timestamp in the transcript to play from there.
+- The transcript, with tool calls you can expand. Failed tool calls are flagged, and Retell calls can also show flow-node transitions.
+- The call summary, dynamic variables, latency, cost and raw JSON.
+- For simulation runs, the scenario instructions and the expected-outcome breakdown.
+
+Each call or run has its own URL (`#call=<id>` or `#run=<id>`), so you can share links to them.
+
+### Keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` (or ↓ / ↑) | Move down / up the list. With a call open, step the detail panel to the next or previous call. |
+| `Ctrl+D` / `Ctrl+U` | Page down / up |
+| `gg` / `G` | Jump to the first / last row |
+| `Enter` | Open the highlighted call, or fold/unfold a result row |
+| `Space` | Same as Enter; on a run inside an open result, collapses that result |
+| `Esc` | Close the detail panel or the open menu |
+| `/` | Focus search |
+
+### Saved views
+
+The **View:** menu saves your columns, filters and sort under a name, optionally with the project, agent, time range and Calls/Simulations setting. A dot on the button means the active view has unsaved changes; from the menu you can save, revert, rename or delete views, or copy a link that carries the current setup.
+
+Views are stored in `views.json` in the project folder, written by the dev server. It's gitignored, so your views stay yours. The browser keeps a copy in localStorage as a fallback.
+
+## How it works
+
+- `pnpm dev` runs a Vite dev server that serves the app and proxies `/cekura/*` to `https://api.cekura.ai`, adding your API key. It also serves two small local endpoints: one reads and writes `views.json`, the other reads the ElevenLabs names.
+- Everything else happens in the browser. The list is loaded once per query and kept in memory, which is why filtering and sorting are instant. Row details are fetched when you open them.
+- Because the proxy adds your API key to every request, only run it on your own machine. Don't expose the dev server on a network or deploy it.
+
+```
+src/
+  api.ts            Cekura API client (call logs, results, runs, agents)
+  columns.ts        Column definitions and how each row's values are derived
+  filters.ts        Filtering, sorting and header summaries
+  grouping.ts       Folding simulation runs under their result
+  views.ts          Saved views and views.json sync
+  App.tsx           State, loading, keyboard shortcuts, toolbar
+  components/       Table, detail panel, transcript, filter and column pickers, menus
+vite.config.ts      Dev server: API proxy and the two local endpoints
+```
+
+## Development
+
+```sh
+pnpm dev        # dev server with hot reload
+pnpm typecheck  # TypeScript only
+pnpm build      # typecheck + production build (what CI runs)
+```
+
+## Troubleshooting
+
+- **401/403 when loading:** `CEKURA_API_KEY` is missing or wrong in `.env.local`. Restart `pnpm dev` after changing it.
+- **Some agents are missing:** they probably had no production calls in the time range. Dev agents usually only appear as simulation runs, so turn on **Simulations** or widen the range.
+- **A run says "not linked to a provider call":** Cekura couldn't match the run to an ElevenLabs or Retell conversation. Hover the cell for Cekura's error message.
+- **Branches and agents show raw IDs:** the ElevenLabs names folder wasn't found. Set `ELEVENLABS_MANAGED_AGENTS_DIR`.
+- **Saved views are missing:** the app isn't running under `pnpm dev`, so it can't reach `views.json` and falls back to the browser's copy. The Views menu says where views are being saved.
