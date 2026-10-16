@@ -192,8 +192,11 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .error.banner { padding: 8px 12px; background: var(--fail-soft); border-radius: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* sidebar */
-.sidebar { width: 248px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px 10px 20px; }
-.sidebar.collapsed { width: 44px; padding: 12px 6px; overflow: hidden; }
+.sidebar { width: 248px; flex-shrink: 0; background: var(--surface); overflow-y: auto; padding: 12px 10px 20px; }
+.side-resizer { width: 5px; flex-shrink: 0; cursor: col-resize; background: var(--surface); border-left: 1px solid var(--border); margin-right: -4px; position: relative; z-index: 5; }
+.side-resizer:hover, body.resizing .side-resizer { background: var(--accent); opacity: 0.5; }
+body.resizing { cursor: col-resize; user-select: none; }
+.sidebar.collapsed { width: 44px; padding: 12px 6px; overflow: hidden; border-right: 1px solid var(--border); }
 .side-collapse { width: 100%; display: flex; justify-content: flex-end; }
 .side-collapse button { background: none; border: 0; color: var(--muted); border-radius: 6px; padding: 2px 7px; }
 .side-collapse button:hover { background: var(--surface-2); color: var(--text); }
@@ -484,3 +487,11 @@ table.mini tr.bad td { color: var(--fail); }
 .copy-icon.done { color: var(--pass); opacity: 1; }
 .phone { display: inline-flex; align-items: center; }
 .tr:hover .copy-icon { opacity: 1; }
+
+/* call context chips in the detail header */
+.detail-context { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mode-chip { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; border-radius: 5px; padding: 2px 7px; }
+.mode-chip.live { color: var(--pass); background: var(--pass-soft); }
+.mode-chip.demo { color: var(--sim); background: var(--sim-soft); }
+.business-chip { font-weight: 600; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; padding: 1px 9px; }
+.ctx-chip { gap: 5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; padding: 1px 4px 1px 9px; font-variant-numeric: tabular-nums; }

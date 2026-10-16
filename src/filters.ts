@@ -1,4 +1,4 @@
-import type { CellValue, Column, Row } from './columns'
+import { SEARCH_SEP, type CellValue, type Column, type Row } from './columns'
 
 export type Filter =
   | { col: string; type: 'set'; values: (string | null)[]; exclude?: boolean }
@@ -36,11 +36,24 @@ export function matches(f: Filter, v: CellValue): boolean {
   }
 }
 
-export function applyFilters(rows: Row[], filters: Filter[], search: string, skipIndex = -1): Row[] {
+/**
+ * Substring match against any column; `*` matches any run of characters within a single column,
+ * so `conv_*b2f` or `*salon*tampa*` work as wildcards.
+ */
+function searchMatcher(search: string): ((haystack: string) => boolean) | null {
   const q = search.trim().toLowerCase()
+  if (!q) return null
+  if (!q.includes('*')) return (h) => h.includes(q)
+  const body = q.split('*').map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(`[^${SEARCH_SEP}]*`)
+  const re = new RegExp(body)
+  return (h) => re.test(h)
+}
+
+export function applyFilters(rows: Row[], filters: Filter[], search: string, skipIndex = -1): Row[] {
+  const match = searchMatcher(search)
   const active = filters.filter((_, i) => i !== skipIndex)
-  if (!q && active.length === 0) return rows
-  return rows.filter((r) => (!q || r.search.includes(q)) && active.every((f) => matches(f, r.v[f.col])))
+  if (!match && active.length === 0) return rows
+  return rows.filter((r) => (!match || match(r.search)) && active.every((f) => matches(f, r.v[f.col])))
 }
 
 const BINARY_ORDER: Record<string, number> = { fail: 0, pass: 1 }

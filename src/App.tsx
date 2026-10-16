@@ -148,6 +148,7 @@ export default function App() {
   const [popover, setPopover] = useState<'columns' | 'views' | null>(null)
   const [theme, toggleTheme] = useTheme()
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistentState('sidebarCollapsed', false)
+  const [sidebarWidth, setSidebarWidth] = usePersistentState('sidebarWidth', 248)
   const [facetKeys, setFacetKeys] = usePersistentState<string[]>('facets', DEFAULT_FACETS)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -341,6 +342,13 @@ export default function App() {
     })
     if (key) setCursorId(key)
   }, [])
+  // Searching for a result ID is a request to see that result's runs, so unfold it.
+  useEffect(() => {
+    const id = /^\d+$/.test(search.trim()) ? Number(search.trim()) : null
+    if (id == null || !calls.some((c) => c.sim?.resultId === id)) return
+    setExpandedResults((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))
+  }, [search, calls])
+
   // A run opened from a link or the keyboard should be visible, so unfold its result.
   useEffect(() => {
     const id = selectedRow?.call.sim?.resultId
@@ -495,7 +503,7 @@ export default function App() {
         <button className="btn primary icon" onClick={() => load()} disabled={!!progress} title="Reload">{progress ? '…' : '↻'}</button>
         {progress && <button className="btn ghost" onClick={() => { abortRef.current?.abort(); setProgress(null) }}>Cancel</button>}
         <span className="spacer" />
-        <input ref={searchRef} className="search" placeholder="Search calls, phones, scenarios…  /" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input ref={searchRef} className="search" placeholder="Search IDs, phones, results, scenarios…  /" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="popover-anchor">
           <button className="btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>
           {popover === 'columns' && (
@@ -536,7 +544,7 @@ export default function App() {
 
       <div className="body">
         {/* With a call open the detail panel needs the room, so the sidebar folds to a rail. */}
-        <Sidebar collapsed={sidebarCollapsed || !!selectedRow}
+        <Sidebar collapsed={sidebarCollapsed || !!selectedRow} width={sidebarWidth} onResize={setSidebarWidth}
           onToggleCollapsed={() => { if (selectedRow) { select(null); setSidebarCollapsed(false) } else setSidebarCollapsed(!sidebarCollapsed) }}
           views={savedViews} activeViewId={activeViewId} viewModified={viewModified} onApplyView={applyView}
           onManageViews={() => setPopover('views')}

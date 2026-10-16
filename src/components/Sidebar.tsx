@@ -7,8 +7,13 @@ import { Popover } from './Popover'
 
 const TOP_VALUES = 6
 
+const MIN_WIDTH = 180
+const MAX_WIDTH = 520
+
 interface Props {
   collapsed: boolean
+  width: number
+  onResize: (width: number) => void
   onToggleCollapsed: () => void
   views: SavedView[]
   activeViewId: string | null
@@ -38,8 +43,24 @@ export function Sidebar(p: Props) {
   const facetCols = p.facetKeys.map((k) => colMap.get(k)).filter((c): c is Column => !!c)
   const addable = p.columns.filter((c) => isSetKind(c.kind) && !p.facetKeys.includes(c.key))
 
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = p.width
+    const move = (ev: MouseEvent) => p.onResize(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX)))
+    const up = () => {
+      document.removeEventListener('mousemove', move)
+      document.removeEventListener('mouseup', up)
+      document.body.classList.remove('resizing')
+    }
+    document.body.classList.add('resizing')
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+  }
+
   return (
-    <aside className="sidebar">
+    <>
+    <aside className="sidebar" style={{ width: p.width }}>
       <div className="side-collapse"><button title="Hide sidebar" onClick={p.onToggleCollapsed}>«</button></div>
 
       <div className="side-sec">
@@ -68,6 +89,8 @@ export function Sidebar(p: Props) {
         )}
       </div>
     </aside>
+    <div className="side-resizer" onMouseDown={startResize} onDoubleClick={() => p.onResize(248)} title="Drag to resize · double-click to reset" />
+    </>
   )
 }
 

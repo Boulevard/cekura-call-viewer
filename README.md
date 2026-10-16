@@ -39,7 +39,7 @@ Simulation runs are found through their results (test-suite executions) created 
 
 ### Layout
 
-- **Sidebar:** your saved views, plus checkbox filters with counts for Source, Success, Agent and Ended reason. Use **+ Add filter section** for any other column, × to remove one, and « to collapse the sidebar. While a call is open it shrinks to a slim rail.
+- **Sidebar:** your saved views, plus checkbox filters with counts for Source, Success, Agent and Ended reason. Use **+ Add filter section** for any other column, × to remove one, and « to collapse the sidebar. Drag its right edge to resize it (double-click to reset). While a call is open it shrinks to a slim rail.
 - **Theme:** ☀ / ☾ in the toolbar switches between light and dark. Until you pick one, it follows your system setting.
 
 ### Columns, sorting and filtering
@@ -48,7 +48,7 @@ Simulation runs are found through their results (test-suite executions) created 
 - **Header summaries:** pass rate and failure count for pass/fail metrics, average for numbers, number of distinct values for text. Click a header's `N✗` to show only the failures.
 - **Sorting:** click a header; shift-click to add a secondary sort. Empty values always sort last.
 - **Filtering:** use **+ Filter** or a header's `⋮` menu. Value lists come with live counts, numbers and times filter by range, and text filters by substring. Alt-click any cell to filter to that value.
-- **Search:** the search box matches call IDs, phone numbers, agent names, result and scenario names, and text metric values.
+- **Search:** matches the text of any column (as shown in the table) plus IDs without their own column: call, run, result, scenario and Cekura agent IDs. Use `*` as a wildcard within a column, e.g. `conv_*b2f` or `*tampa*salon*`. Searching a result ID unfolds that result.
 - **CSV:** exports the filtered rows with the visible columns, plus Cekura and provider links.
 
 Metrics that Cekura skipped (trigger not met, or `VALID_SKIP`) show as **N/A**. Cekura's own list reports them as passed, so pass rates here can be lower than in the dashboard.
