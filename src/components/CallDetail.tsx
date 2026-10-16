@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCall, getRun } from '../api'
 import { binaryValue, expectedOutcomeLabel, formatDuration, parseDuration, type Row } from '../columns'
 import { cekuraLink, providerLink, type Settings } from '../settings'
-import type { CallDetail as Detail, CallMetric, EvaluationMetric } from '../types'
+import type { CallDetail as Detail, CallLog, CallMetric, EvaluationMetric } from '../types'
 import { BinaryBadge } from './Badge'
 import { CopyIcon, isPhoneNumber } from './CopyIcon'
 import { JsonView } from './JsonView'
@@ -73,8 +73,8 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext }:
           <BinaryBadge value={row.v.success} naLabel="pending" />
           <span className="pill">{call.status}</span>
           {call.call_ended_reason && <span className="pill">{call.call_ended_reason}</span>}
-          {call.customer_number && <span className="phone">{call.customer_number}<CopyIcon text={call.customer_number} title="Copy phone number" /></span>}
         </div>
+        <CallContext call={call} detail={detail} />
         {call.sim && (
           <div className="detail-facts">
             <span>{call.agent_name}</span>
@@ -136,6 +136,50 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext }:
         </section>
       </div>
     </aside>
+  )
+}
+
+const metricText = (call: CallLog, name: string) => {
+  const m = call.metrics.find((x) => x.name.toLowerCase() === name.toLowerCase())
+  return typeof m?.enum === 'string' && m.enum.trim() ? m.enum.trim() : null
+}
+
+const str = (v: unknown) => (typeof v === 'string' && v.trim() && v !== 'None' ? v.trim() : null)
+
+/**
+ * Who the call was between: live vs demo, the business and its line, and the caller. The metrics
+ * carry these once a call is evaluated; until then (and for calls without those metrics) the
+ * call's own dynamic variables do.
+ */
+function CallContext({ call, detail }: { call: CallLog; detail: Detail | null }) {
+  const md = detail?.metadata ?? {}
+  // Call logs expose dynamic variables directly; simulation runs only have them inside the
+  // provider's metadata (ElevenLabs client data, or Retell's LLM variables).
+  const dv: Record<string, unknown> = {
+    ...md.provider_call_data?.retell_llm_dynamic_variables,
+    ...md.conversation_initiation_client_data?.dynamic_variables,
+    ...(detail?.dynamic_variables ?? {}),
+  }
+  const mode = (metricText(call, 'mode') ?? str(dv.mode) ?? str(dv.call_mode))?.toLowerCase() ?? null
+  const business = metricText(call, 'Info: Business Name') ?? str(dv.business_name)
+  const businessLine = metricText(call, 'to_number') ?? str(md.to_number) ?? str(dv.system__called_number) ?? str(detail?.agent_number)
+  const caller = str(dv.original_incoming_phone_number) ?? str(call.customer_number)
+  if (!mode && !business && !businessLine && !caller) return null
+  return (
+    <div className="detail-context">
+      {mode && <span className={`mode-chip ${mode === 'live' ? 'live' : 'demo'}`}>{mode.toUpperCase()}</span>}
+      {business && <span className="business-chip" title="Business">{business}</span>}
+      {businessLine && (
+        <span className="ctx-chip phone" title="The business number that was called">
+          <span className="muted">Business line</span> {businessLine}<CopyIcon text={businessLine} title="Copy phone number" />
+        </span>
+      )}
+      {caller && caller !== businessLine && (
+        <span className="ctx-chip phone" title="The number the call came from">
+          <span className="muted">Caller</span> {caller}<CopyIcon text={caller} title="Copy phone number" />
+        </span>
+      )}
+    </div>
   )
 }
 

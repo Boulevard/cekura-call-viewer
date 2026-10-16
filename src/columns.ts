@@ -90,6 +90,9 @@ export function expectedOutcomeLabel(score: number | null | undefined): string |
   return `Partial (${score})`
 }
 
+/** Separates fields in a row's search text. */
+export const SEARCH_SEP = '\u0001'
+
 export function parseDuration(d: string | null | undefined): number | null {
   if (!d) return null
   const parts = d.split(':').map(Number)
@@ -172,7 +175,8 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
       test_profile: call.sim?.testProfile ?? null,
       run_type: call.sim?.runType ?? null,
     }
-    const searchParts = [call.call_id, call.customer_number, String(call.id), call.agent_name, call.feedback, call.sim?.resultName, call.sim?.scenarioName,
+    const searchParts = [call.call_id, call.customer_number, String(call.id), call.agent_name, call.feedback,
+      String(call.agent), call.sim && String(call.sim.resultId), call.sim && String(call.sim.scenarioId), call.sim?.resultName, call.sim?.scenarioName,
       call.providerAgentId, call.branchId]
 
     for (const m of call.metrics ?? []) {
@@ -205,7 +209,16 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
         v[k] = n
       }
     }
-    return { call, v, search: searchParts.filter(Boolean).join(' ').toLowerCase() }
+    // Search covers every column as displayed, plus a few raw fields, one field per segment so a
+    // query (or a * wildcard) can't match across two columns.
+    // Pass/fail metrics render as icons, so their words are left out; otherwise "fail" would
+    // match nearly every row.
+    for (const [k, val] of Object.entries(v)) {
+      if (k === 'success') searchParts.push(val === 'pass' ? 'Passed' : val === 'fail' ? 'Failed' : 'Evaluating')
+      else if (val == null || metricCols.get(k)?.kind === 'binary') continue
+      else searchParts.push(k === 'timestamp' ? formatCell({ kind: 'date' } as Column, val) : k === 'duration' ? formatDuration(val as number) : String(val))
+    }
+    return { call, v, search: searchParts.filter(Boolean).join(SEARCH_SEP).toLowerCase() }
   })
 
   const sortedMetricCols = [...metricCols.values()].sort((a, b) => a.label.localeCompare(b.label))
