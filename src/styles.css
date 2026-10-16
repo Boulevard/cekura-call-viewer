@@ -495,3 +495,21 @@ table.mini tr.bad td { color: var(--fail); }
 .mode-chip.demo { color: var(--sim); background: var(--sim-soft); }
 .business-chip { font-weight: 600; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; padding: 1px 9px; }
 .ctx-chip { gap: 5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; padding: 1px 4px 1px 9px; font-variant-numeric: tabular-nums; }
+
+/* query bar */
+.table-card-head.sub { min-height: 0; padding: 7px 12px; }
+.query-bar { position: relative; flex: 1; min-width: 300px; display: flex; align-items: center; }
+.query-icon { position: absolute; left: 11px; color: var(--muted); font-size: 15px; pointer-events: none; }
+.query-input { width: 100%; padding: 8px 34px 8px 32px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--surface-2); border-color: var(--border); border-radius: 9px; }
+.query-input.has-issues { border-color: var(--warn); }
+.query-clear { position: absolute; right: 6px; background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+.query-clear:hover { background: var(--surface-3); color: var(--text); }
+.query-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: min(560px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; max-height: 420px; overflow: auto; }
+.query-menu-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 6px 8px 4px; }
+.query-sugg { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: 0; padding: 6px 8px; border-radius: 6px; }
+.query-sugg.on { background: var(--accent-soft); }
+.query-sugg-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.query-sugg-hint { flex-shrink: 0; color: var(--muted); font-size: 12px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.query-issue { color: var(--warn); font-size: 12px; padding: 5px 8px; }
+.query-help { display: flex; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid var(--border); margin-top: 4px; padding: 7px 8px 3px; font-size: 11px; color: var(--muted); }
+.query-help b { font-family: ui-monospace, Menlo, monospace; font-weight: 500; color: var(--text-2); }

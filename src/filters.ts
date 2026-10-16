@@ -2,7 +2,8 @@ import { SEARCH_SEP, type CellValue, type Column, type Row } from './columns'
 
 export type Filter =
   | { col: string; type: 'set'; values: (string | null)[]; exclude?: boolean }
-  | { col: string; type: 'range'; min?: number; max?: number }
+  | { col: string; type: 'range'; min?: number; max?: number; minExcl?: boolean; maxExcl?: boolean }
+  /** `q` is a substring, or a whole-value pattern when it contains `*` (e.g. `conv_*b2f`). */
   | { col: string; type: 'text'; q: string; exclude?: boolean }
 
 export interface SortSpec {
@@ -26,14 +27,29 @@ export function matches(f: Filter, v: CellValue): boolean {
     case 'range': {
       if (f.min == null && f.max == null) return true
       if (typeof v !== 'number') return false
-      return (f.min == null || v >= f.min) && (f.max == null || v <= f.max)
+      const aboveMin = f.min == null || (f.minExcl ? v > f.min : v >= f.min)
+      const belowMax = f.max == null || (f.maxExcl ? v < f.max : v <= f.max)
+      return aboveMin && belowMax
     }
     case 'text': {
       if (!f.q) return true
-      const hit = v != null && String(v).toLowerCase().includes(f.q.toLowerCase())
+      const s = v == null ? null : String(v).toLowerCase()
+      const hit = s != null && (f.q.includes('*') ? globRegex(f.q).test(s) : s.includes(f.q.toLowerCase()))
       return f.exclude ? !hit : hit
     }
   }
+}
+
+const globCache = new Map<string, RegExp>()
+
+/** Whole-value, case-insensitive match where `*` stands for any run of characters. */
+export function globRegex(pattern: string): RegExp {
+  let re = globCache.get(pattern)
+  if (!re) {
+    re = new RegExp(`^${pattern.toLowerCase().split('*').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+    globCache.set(pattern, re)
+  }
+  return re
 }
 
 /**
@@ -135,11 +151,12 @@ export function describeFilter(f: Filter, col: Column | undefined, fmt: (v: numb
     }
     case 'range': {
       if (f.min != null && f.max != null) return `${label} ${fmt(f.min)} – ${fmt(f.max)}`
-      if (f.min != null) return `${label} ≥ ${fmt(f.min)}`
-      if (f.max != null) return `${label} ≤ ${fmt(f.max)}`
+      if (f.min != null) return `${label} ${f.minExcl ? '>' : '≥'} ${fmt(f.min)}`
+      if (f.max != null) return `${label} ${f.maxExcl ? '<' : '≤'} ${fmt(f.max)}`
       return `${label} (any)`
     }
     case 'text':
+      if (f.q.includes('*')) return `${label} ${f.exclude ? "doesn't match" : 'matches'} ${f.q}`
       return `${label} ${f.exclude ? "doesn't contain" : 'contains'} "${f.q}"`
   }
 }
