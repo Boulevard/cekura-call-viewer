@@ -32,8 +32,8 @@ const BASE_COLUMNS: Column[] = [
   { key: 'call_id', label: 'Call / conversation ID', group: 'Call', kind: 'text', width: 280 },
   { key: 'links', label: 'Links', group: 'Call', kind: 'links', width: 122 },
   { key: 'source', label: 'Source', group: 'Call', kind: 'category', width: 110 },
-  { key: 'provider_agent', label: 'Provider agent', group: 'Call', kind: 'category', width: 220 },
-  { key: 'branch', label: 'Branch (11Labs)', group: 'Call', kind: 'category', width: 220 },
+  { key: 'provider_agent', label: 'Provider agent', group: 'Call', kind: 'category', width: 290 },
+  { key: 'branch', label: 'Branch (11Labs)', group: 'Call', kind: 'category', width: 300 },
   { key: 'timestamp', label: 'Time', group: 'Call', kind: 'date', width: 162 },
   { key: 'agent_name', label: 'Agent', group: 'Call', kind: 'category', width: 212 },
   { key: 'duration', label: 'Duration', group: 'Call', kind: 'duration', width: 92 },
@@ -61,7 +61,26 @@ const BASE_COLUMNS: Column[] = [
 /** Added together by the "show simulation columns" shortcut. */
 export const SIM_COLUMNS = ['result_name', 'scenario_name', 'expected_outcome']
 
-export const DEFAULT_VISIBLE = ['call_id', 'links', 'timestamp', 'agent_name', 'duration', 'success', 'call_ended_reason']
+export const DEFAULT_VISIBLE = ['call_id', 'links', 'timestamp', 'agent_name', 'provider_agent', 'branch', 'duration', 'success', 'call_ended_reason']
+
+/**
+ * Metric columns that belong in the default view. Metric keys are Cekura metric IDs, which differ
+ * per project, so these are matched by metric name once the data is loaded.
+ */
+export const DEFAULT_METRIC_NAMES = ['Info: Business Name', 'location name', 'business_id']
+
+/** Adds the default metric columns (after Agent and its provider columns) to a column list, if the data has them. */
+export function withDefaultMetrics(visible: string[], columns: Column[]): string[] {
+  const keys = DEFAULT_METRIC_NAMES
+    .map((name) => columns.find((c) => c.metricId != null && c.label.toLowerCase() === name.toLowerCase())?.key)
+    .filter((k): k is string => !!k && !visible.includes(k))
+  if (keys.length === 0) return visible
+  const anchor = ['branch', 'provider_agent', 'agent_name'].find((k) => visible.includes(k))
+  const at = anchor ? visible.indexOf(anchor) : -1
+  const next = [...visible]
+  next.splice(at >= 0 ? at + 1 : next.length, 0, ...keys)
+  return next
+}
 
 /** Cekura scores expected outcomes 0 (not met), 50 (partially met) or 100 (met). */
 export function expectedOutcomeLabel(score: number | null | undefined): string | null {
@@ -118,18 +137,10 @@ function kindFor(type: string): ColumnKind {
   return 'number'
 }
 
-export interface NameLookup {
-  agents: Record<string, string>
-  branches: Record<string, string>
-}
-
-/** Friendly name when the ai-receptionist repo knows the ID, otherwise the raw ID. */
-const named = (id: string | null | undefined, names: Record<string, string>) => (id ? names[id] ?? id : null)
-
 /** Placeholder for ElevenLabs production calls whose branch hasn't been fetched yet. */
 export const BRANCH_PENDING = '…loading'
 
-export function buildModel(calls: CallLog[], names: NameLookup = { agents: {}, branches: {} }): { columns: Column[]; rows: Row[] } {
+export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] } {
   const metricCols = new Map<string, Column>()
 
   const rows = calls.map((call): Row => {
@@ -149,8 +160,8 @@ export function buildModel(calls: CallLog[], names: NameLookup = { agents: {}, b
       dropoff_point: call.dropoff_point || null,
       error_message: call.error_message || null,
       source: call.source === 'sim' ? 'Simulation' : 'Call',
-      provider_agent: named(call.providerAgentId, names.agents),
-      branch: call.branchId === undefined && call.call_id?.startsWith('conv_') ? BRANCH_PENDING : named(call.branchId, names.branches),
+      provider_agent: call.providerAgentId ?? null,
+      branch: call.branchId === undefined && call.call_id?.startsWith('conv_') ? BRANCH_PENDING : call.branchId ?? null,
       result_name: call.sim?.resultName ?? null,
       result_id: call.sim?.resultId ?? null,
       scenario_name: call.sim?.scenarioName ?? null,
@@ -162,7 +173,7 @@ export function buildModel(calls: CallLog[], names: NameLookup = { agents: {}, b
       run_type: call.sim?.runType ?? null,
     }
     const searchParts = [call.call_id, call.customer_number, String(call.id), call.agent_name, call.feedback, call.sim?.resultName, call.sim?.scenarioName,
-      call.providerAgentId, call.branchId, named(call.providerAgentId, names.agents), named(call.branchId, names.branches)]
+      call.providerAgentId, call.branchId]
 
     for (const m of call.metrics ?? []) {
       const key = metricKey(m.id)

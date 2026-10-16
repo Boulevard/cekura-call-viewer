@@ -256,31 +256,12 @@ export function getRun(settings: Settings, id: number): Promise<CallDetail> {
 
 // ---- Provider agents & ElevenLabs branches ---------------------------------------------------
 
-export interface ProviderAgent {
-  assistantId: string
-  /** The Cekura agent's name, used to label provider agents the repo doesn't name. */
-  name: string
-}
-
-/** Cekura agent ID -> the ElevenLabs/Retell agent it's configured with. */
-export async function listProviderAgents(settings: Settings, projectId: number): Promise<Map<number, ProviderAgent>> {
-  const res = await get<Page<{ id: number; assistant_id: string; agent_name: string }>>(settings, '/test_framework/v1/aiagents/', {
-    project_id: projectId, page_size: 200, ql: '{id,assistant_id,agent_name}',
+/** Cekura agent ID -> the ElevenLabs/Retell agent ID it's configured with. */
+export async function listProviderAgents(settings: Settings, projectId: number): Promise<Map<number, string>> {
+  const res = await get<Page<{ id: number; assistant_id: string }>>(settings, '/test_framework/v1/aiagents/', {
+    project_id: projectId, page_size: 200, ql: '{id,assistant_id}',
   })
-  return new Map(res.results.filter((a) => a.assistant_id).map((a) => [a.id, { assistantId: a.assistant_id, name: a.agent_name }]))
-}
-
-export interface ProviderNames {
-  agents: Record<string, string>
-  branches: Record<string, string>
-}
-
-export async function fetchProviderNames(): Promise<ProviderNames> {
-  try {
-    const res = await fetch('/local-api/elevenlabs-names')
-    if (res.ok && res.headers.get('content-type')?.includes('json')) return await res.json()
-  } catch { /* static build or repo missing */ }
-  return { agents: {}, branches: {} }
+  return new Map(res.results.filter((a) => a.assistant_id).map((a) => [a.id, a.assistant_id]))
 }
 
 const BRANCH_BATCH = 20
@@ -322,4 +303,19 @@ export async function fetchCallBranches(
     }
   }
   await Promise.all(Array.from({ length: Math.min(3, batches.length) }, worker))
+}
+
+// ---- Projects -------------------------------------------------------------------------------
+
+export interface Project {
+  id: number
+  name: string
+  organization: string | null
+}
+
+export async function listProjects(settings: Settings): Promise<Project[]> {
+  type Raw = { id: number; name: string; organization?: { name?: string } | null }
+  const res = await get<Raw[] | Page<Raw>>(settings, '/user/v1/projects/')
+  const rows = Array.isArray(res) ? res : res.results
+  return rows.map((p) => ({ id: p.id, name: p.name, organization: p.organization?.name ?? null }))
 }
