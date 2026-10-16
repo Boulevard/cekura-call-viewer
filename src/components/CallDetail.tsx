@@ -4,6 +4,7 @@ import { binaryValue, expectedOutcomeLabel, formatDuration, parseDuration, type 
 import { cekuraLink, providerLink, type Settings } from '../settings'
 import type { CallDetail as Detail, CallLog, CallMetric, EvaluationMetric } from '../types'
 import { BinaryBadge } from './Badge'
+import { callVariables, datadogLinks } from '../datadog'
 import { CopyIcon, isPhoneNumber } from './CopyIcon'
 import { JsonView } from './JsonView'
 import { Transcript } from './Transcript'
@@ -88,6 +89,9 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext }:
         <div className="detail-links">
           <a className="btn" href={cekuraLink(call)} target="_blank" rel="noreferrer">{call.sim ? 'Open result in Cekura ↗' : 'Open in Cekura ↗'}</a>
           {prov && <a className="btn" href={prov.url} target="_blank" rel="noreferrer">Open in {prov.label} ↗</a>}
+          {datadogLinks(settings, call, detail).map((l) => (
+            <a key={l.label} className="btn datadog" href={l.url} target="_blank" rel="noreferrer" title={l.title}>{l.label} ↗</a>
+          ))}
           {call.call_id && <CopyButton text={call.call_id} label={call.call_id} />}
           <CopyButton text={String(call.id)} label={call.sim ? `run #${call.id}` : `#${call.id}`} />
         </div>
@@ -153,13 +157,7 @@ const str = (v: unknown) => (typeof v === 'string' && v.trim() && v !== 'None' ?
  */
 function CallContext({ call, detail }: { call: CallLog; detail: Detail | null }) {
   const md = detail?.metadata ?? {}
-  // Call logs expose dynamic variables directly; simulation runs only have them inside the
-  // provider's metadata (ElevenLabs client data, or Retell's LLM variables).
-  const dv: Record<string, unknown> = {
-    ...md.provider_call_data?.retell_llm_dynamic_variables,
-    ...md.conversation_initiation_client_data?.dynamic_variables,
-    ...(detail?.dynamic_variables ?? {}),
-  }
+  const dv = callVariables(detail)
   const mode = (metricText(call, 'mode') ?? str(dv.mode) ?? str(dv.call_mode))?.toLowerCase() ?? null
   const business = metricText(call, 'Info: Business Name') ?? str(dv.business_name)
   const businessLine = metricText(call, 'to_number') ?? str(md.to_number) ?? str(dv.system__called_number) ?? str(detail?.agent_number)

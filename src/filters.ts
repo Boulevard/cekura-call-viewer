@@ -140,23 +140,3 @@ export function summarize(rows: Row[], col: Column): ColumnSummary | null {
   }
   return null
 }
-
-export function describeFilter(f: Filter, col: Column | undefined, fmt: (v: number) => string): string {
-  const label = col?.label ?? f.col
-  switch (f.type) {
-    case 'set': {
-      const vals = f.values.map((v) => (v == null ? '(empty)' : v))
-      const shown = vals.length > 3 ? `${vals.slice(0, 3).join(', ')} +${vals.length - 3}` : vals.join(', ')
-      return `${label} ${f.exclude ? 'is not' : 'is'} ${shown || '—'}`
-    }
-    case 'range': {
-      if (f.min != null && f.max != null) return `${label} ${fmt(f.min)} – ${fmt(f.max)}`
-      if (f.min != null) return `${label} ${f.minExcl ? '>' : '≥'} ${fmt(f.min)}`
-      if (f.max != null) return `${label} ${f.maxExcl ? '<' : '≤'} ${fmt(f.max)}`
-      return `${label} (any)`
-    }
-    case 'text':
-      if (f.q.includes('*')) return `${label} ${f.exclude ? "doesn't match" : 'matches'} ${f.q}`
-      return `${label} ${f.exclude ? "doesn't contain" : 'contains'} "${f.q}"`
-  }
-}

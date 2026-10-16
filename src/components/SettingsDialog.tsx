@@ -27,6 +27,11 @@ export function SettingsDialog({ settings, onSave, onClose }: { settings: Settin
           <input value={s.elevenlabsUrl} onChange={(e) => set('elevenlabsUrl', e.target.value)} />
           <span className="muted small">{'{call_id}'} is replaced with the provider call ID.</span>
         </label>
+        <label>
+          Datadog URL
+          <input value={s.datadogUrl} onChange={(e) => set('datadogUrl', e.target.value)} />
+          <span className="muted small">Base URL for the per-call Datadog log links.</span>
+        </label>
         <div className="modal-actions">
           <button className="link" onClick={() => setS({ ...DEFAULT_SETTINGS, apiKey: s.apiKey })}>Reset defaults</button>
           <span className="spacer" />

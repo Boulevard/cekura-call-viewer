@@ -7,6 +7,7 @@ export interface Settings {
   maxCalls: number
   retellUrl: string
   elevenlabsUrl: string
+  datadogUrl: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxCalls: 10000,
   retellUrl: 'https://dashboard.retellai.com/call-history?history={call_id}',
   elevenlabsUrl: 'https://elevenlabs.io/app/agents/history/{call_id}',
+  datadogUrl: 'https://app.datadoghq.com',
 }
 
 export function loadSettings(): Settings {

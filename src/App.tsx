@@ -10,7 +10,6 @@ import { buildDisplay, groupKey } from './grouping'
 import { CallTable, ROW_HEIGHT } from './components/CallTable'
 import { CallDetail } from './components/CallDetail'
 import { ColumnPicker } from './components/ColumnPicker'
-import { FilterBar } from './components/FilterBar'
 import { Popover } from './components/Popover'
 import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
@@ -558,11 +557,9 @@ export default function App() {
             <div className="table-card-head">
               <QueryBar ref={searchRef} columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
                 facetRowsFor={facetRowsFor}
-                onChange={(filters, freeText) => { setView((v) => ({ ...v, filters })); setSearch(freeText) }} />
+                onChange={(filters, freeText) => { if (filters) setView((v) => ({ ...v, filters })); setSearch(freeText) }} />
             </div>
             <div className="table-card-head sub">
-              <FilterBar columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
-                onSetFilter={setFilter} onClearAll={() => setView((v) => ({ ...v, filters: [] }))} />
               <div className="table-meta">
                 {progress ? (
                   <span>Loading {progress.loaded.toLocaleString()} / {progress.total ? progress.total.toLocaleString() : '…'} {sourceLabel}

@@ -27,7 +27,7 @@ All settings go in `.env.local` (gitignored). Only the API key is required.
 | `CEKURA_API_KEY` | – | Cekura API key. The dev server adds it to API requests, so it never reaches the browser. |
 | `VITE_CEKURA_PROJECT_ID` | `3201` | Project the app opens on before you've picked one. |
 
-The ⚙ Settings dialog also lets you set an API key in the browser (stored in localStorage), raise the cap on how many calls are loaded, and change the ElevenLabs and Retell link formats.
+The ⚙ Settings dialog also lets you set an API key in the browser (stored in localStorage), raise the cap on how many calls are loaded, and change the ElevenLabs, Retell and Datadog link formats.
 
 ## Using it
 
@@ -48,7 +48,7 @@ Simulation runs are found through their results (test-suite executions) created 
 - **Header summaries:** pass rate and failure count for pass/fail metrics, average for numbers, number of distinct values for text. Click a header's `N✗` to show only the failures.
 - **Sorting:** click a header; shift-click to add a secondary sort. Empty values always sort last.
 - **Filtering:** use **+ Filter** or a header's `⋮` menu. Value lists come with live counts, numbers and times filter by range, and text filters by substring. Alt-click any cell to filter to that value.
-- **Query bar:** the box at the top of the table takes Datadog-style queries and plain search text, and always shows the current filters as text. Editing it updates the filters, and changing filters anywhere else (sidebar, chips, header menus, alt-click, saved views) rewrites it. Autocomplete suggests field names as you type, then that field's values with counts; **Tab** completes, **↑/↓** choose. A term only applies once its field and value exist in the data, so half-typed values don't empty the table; mistakes are listed in the dropdown and keep their text until fixed.
+- **Query bar:** the box at the top of the table takes Datadog-style queries and plain search text. Every active filter shows as a pill, wherever it was set (query, sidebar, header menus, alt-click, saved views); a pill's × removes it, clicking it puts it back into the text to edit, and Backspace at the start of the text reopens the last one. A typed `field:value` becomes a pill once it's finished (space, Enter, Tab or clicking away) and matches the data; anything else stays as free-text search. Autocomplete suggests field names as you type, then that field's values with counts; **Tab** completes, **↑/↓** choose. Mistakes are listed in the dropdown and keep their text until fixed.
 
   | Syntax | Meaning |
   | --- | --- |
@@ -85,6 +85,13 @@ Click a row, or press `Enter`. The panel shows:
 - For simulation runs, the scenario instructions and the expected-outcome breakdown.
 
 Each call or run has its own URL (`#call=<id>` or `#run=<id>`), so you can share links to them.
+
+The detail header also links to Boulevard's backend logs in Datadog:
+
+- **Datadog: this call** — logs tagged with the call's cart (`@blvd_metadata.cart_id`, the cart every AI receptionist call creates) plus the evaluation log that names the call ID, over the call's time window. Precise, but only what's tagged with the cart.
+- **Datadog: location during call** — everything logged for the call's location (`@blvd_metadata.location_id`) between the call's start and end. Includes the call's tool requests, but also any unrelated activity at that location at the same time.
+
+The caller's phone number isn't in the logs, so it can't be used. Neither link filters by service, so they work for production calls (`sched-prod`) and simulation runs (`sched-rel-ai-receptionist`, `sched-dev3`) alike. The Datadog base URL is in Settings.
 
 ### Keyboard shortcuts
 

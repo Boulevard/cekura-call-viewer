@@ -2,12 +2,12 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import type { Column, Row } from '../columns'
 import { facetCounts, type Filter } from '../filters'
 import {
-  buildFieldIndex, completionAt, distinctValues, formatRangeValue, parseQuery, quoteValue, serializeQuery,
+  buildFieldIndex, completionAt, distinctValues, formatRangeValue, mergeFilters, parseQuery, quoteValue, serializeFilter, tokenize,
   type CompletionTarget, type QueryContext,
 } from '../query'
 
 const MAX_SUGGESTIONS = 12
-const APPLY_DELAY_MS = 150
+const SEARCH_DELAY_MS = 150
 
 interface Suggestion {
   /** Text inserted in place of the token under the caret. */
@@ -25,14 +25,17 @@ interface Props {
   filters: Filter[]
   search: string
   facetRowsFor: (col: string) => Row[]
-  onChange: (filters: Filter[], freeText: string) => void
+  /** `filters` is null when only the free-text search changed. */
+  onChange: (filters: Filter[] | null, freeText: string) => void
 }
 
 export interface QueryBarHandle { focus: () => void }
 
 /**
- * One text box for every filter: the text is generated from the active filters, and editing it
- * rewrites them, so it stays in step with the sidebar, chips and header menus.
+ * Datadog-style query box. Every active filter is a pill (so the sidebar, header menus and saved
+ * views show up here too, and each pill's × removes it); the text field holds what's being typed.
+ * A `field:value` term becomes a pill once it's finished (followed by a space, Enter, Tab or
+ * blur) and matches the data; anything else stays as free-text search.
  */
 export const QueryBar = forwardRef<QueryBarHandle, Props>(function QueryBar(p, ref) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,31 +54,53 @@ export const QueryBar = forwardRef<QueryBarHandle, Props>(function QueryBar(p, r
     }
   }, [index, p.rows])
 
-  const derived = useMemo(() => serializeQuery(p.filters, p.search, p.colMap, index), [p.filters, p.search, p.colMap, index])
-  // While the user is editing, their text wins; otherwise the box shows the filters as text.
-  const [draft, setDraft] = useState<string | null>(null)
+  const [text, setText] = useState(p.search)
   const [focused, setFocused] = useState(false)
   const [caret, setCaret] = useState(0)
   const [highlight, setHighlight] = useState(-1)
   const [menuOpen, setMenuOpen] = useState(false)
-  const text = draft ?? derived
   const parsed = useMemo(() => parseQuery(text, ctx), [text, ctx])
-
-  // Something else changed the filters (sidebar, chips, a saved view): show that. Only reacts to
-  // filter changes, not to blur, so a query with a mistake keeps its text for fixing.
-  const focusedRef = useRef(false)
-  focusedRef.current = focused
-  useEffect(() => { if (!focusedRef.current) setDraft(null) }, [derived])
+  const placeCaret = (pos: number) => { setCaret(pos); requestAnimationFrame(() => inputRef.current?.setSelectionRange(pos, pos)) }
 
   const timer = useRef<number | undefined>(undefined)
-  const apply = (value: string, now = false) => {
+  const pushSearch = (value: string, now = false) => {
     window.clearTimeout(timer.current)
-    const run = () => {
-      const q = parseQuery(value, ctx)
-      p.onChange(q.filters, q.freeText)
-    }
+    const run = () => p.onChange(null, parseQuery(value, ctx).freeText)
     if (now) run()
-    else timer.current = window.setTimeout(run, APPLY_DELAY_MS)
+    else timer.current = window.setTimeout(run, SEARCH_DELAY_MS)
+  }
+
+  /** Turns finished, valid field terms into filters (pills) and leaves the rest as text. */
+  const commit = (value: string, force: boolean): string => {
+    const q = parseQuery(value, ctx)
+    const done = q.applied.filter((t) => force || (t.end < value.length && /\s/.test(value[t.end])))
+    if (done.length === 0) { pushSearch(value, force); return value }
+    let rest = value
+    for (const t of [...done].sort((a, b) => b.start - a.start)) rest = rest.slice(0, t.start) + rest.slice(t.end)
+    rest = rest.replace(/\s{2,}/g, ' ').replace(/^\s+/, '')
+    const added = parseQuery(done.map((t) => value.slice(t.start, t.end)).join(' '), ctx).filters
+    window.clearTimeout(timer.current)
+    p.onChange(mergeFilters(p.filters, added), parseQuery(rest, ctx).freeText)
+    setText(rest)
+    return rest
+  }
+
+  const pills = p.filters.map((f) => {
+    const col = p.colMap.get(f.col)
+    const field = index.fieldOf.get(f.col)
+    return { f, text: col && field ? serializeFilter(f, col, field) : f.col, stale: !col || !field }
+  })
+
+  const removeFilter = (f: Filter) => p.onChange(p.filters.filter((x) => x !== f), parseQuery(text, ctx).freeText)
+  /** Moves a pill back into the text field to edit it. */
+  const editPill = (i: number) => {
+    const pill = pills[i]
+    if (!pill || pill.stale) return
+    const next = text ? `${pill.text} ${text}` : pill.text
+    p.onChange(p.filters.filter((x) => x !== pill.f), parseQuery(text, ctx).freeText)
+    setText(next)
+    inputRef.current?.focus()
+    placeCaret(pill.text.length)
   }
 
   const target: CompletionTarget | null = focused ? completionAt(text, caret, index) : null
@@ -85,21 +110,17 @@ export const QueryBar = forwardRef<QueryBarHandle, Props>(function QueryBar(p, r
   // Enter on plain search text still just searches.
   useEffect(() => { setHighlight(target?.kind === 'value' && suggestions.length ? 0 : -1) }, [targetKey, suggestions.length])
 
-  const replace = (from: number, to: number, insert: string, finish: boolean) => {
-    let next = text.slice(0, from) + insert + text.slice(to)
-    let pos = from + insert.length
-    if (finish && next[pos] !== ' ' && next[pos] !== ')') { next = next.slice(0, pos) + ' ' + next.slice(pos); pos++ }
-    else if (finish && next[pos] === ' ') pos++
-    setDraft(next)
-    setCaret(pos)
-    setMenuOpen(true)
-    apply(next, finish)
-    requestAnimationFrame(() => inputRef.current?.setSelectionRange(pos, pos))
-  }
-
   const accept = (s: Suggestion) => {
     if (!target) return
-    replace(target.from, target.to, s.insert, s.kind === 'value')
+    let next = text.slice(0, target.from) + s.insert + text.slice(target.to)
+    let pos = target.from + s.insert.length
+    if (s.kind === 'value' && !(target.kind === 'value' && target.inList)) {
+      if (next[pos] !== ' ') next = next.slice(0, pos) + ' ' + next.slice(pos)
+      pos++
+    }
+    setMenuOpen(true)
+    const rest = commit(next, false)
+    if (rest === next) { setText(next); placeCaret(pos) } else placeCaret(rest.length)
   }
 
   // The term under the caret is still being typed, so "needs a value" there is noise, not an error.
@@ -107,42 +128,52 @@ export const QueryBar = forwardRef<QueryBarHandle, Props>(function QueryBar(p, r
   const showMenu = focused && menuOpen && (suggestions.length > 0 || shownIssues.length > 0)
 
   return (
-    <div className="query-bar">
+    <div className={`query-bar ${focused ? 'focused' : ''} ${parsed.issues.length && !focused ? 'has-issues' : ''}`}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); inputRef.current?.focus() } }}>
       <span className="query-icon">⌕</span>
-      <input ref={inputRef} className={`query-input ${parsed.issues.length && !focused ? 'has-issues' : ''}`} value={text}
-        spellCheck={false} autoComplete="off"
-        placeholder='Filter or search, e.g. agent:"AI Receptionist - 11Labs prod" -success:fail duration:>60   ( / )'
+      {pills.map((pill, i) => (
+        <span key={`${pill.f.col}-${i}`} className={`qpill ${pill.stale ? 'stale' : ''}`} title={pill.stale ? 'Column not in the loaded data' : 'Click to edit'}
+          onMouseDown={(e) => e.preventDefault()} onClick={() => editPill(i)}>
+          <PillText text={pill.text} />
+          <button className="qpill-x" title="Remove filter" onClick={(e) => { e.stopPropagation(); removeFilter(pill.f) }}>×</button>
+        </span>
+      ))}
+      <input ref={inputRef} className="query-input" value={text} spellCheck={false} autoComplete="off"
+        placeholder={pills.length ? 'Add a filter or search…' : 'Filter or search, e.g. agent:"AI Receptionist - 11Labs prod" -success:fail duration:>60   ( / )'}
         title={parsed.issues.map((i) => i.message).join('\n') || undefined}
         onFocus={(e) => { setFocused(true); setMenuOpen(true); setCaret(e.target.selectionStart ?? text.length) }}
-        onBlur={() => {
-          setFocused(false)
-          setMenuOpen(false)
-          apply(text, true)
-          // Keep text the user is still fixing; otherwise snap back to the canonical form.
-          if (parsed.issues.length === 0) setDraft(null)
-        }}
+        onBlur={() => { setFocused(false); setMenuOpen(false); commit(text, true) }}
         onChange={(e) => {
-          setDraft(e.target.value)
-          setCaret(e.target.selectionStart ?? e.target.value.length)
+          const v = e.target.value
+          setText(v)
+          setCaret(e.target.selectionStart ?? v.length)
           setMenuOpen(true)
-          apply(e.target.value)
+          commit(v, false)
         }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
         onKeyDown={(e) => {
+          const el = e.currentTarget
           if (e.key === 'ArrowDown' && showMenu && suggestions.length) { e.preventDefault(); setHighlight((h) => Math.min(suggestions.length - 1, h + 1)) }
           else if (e.key === 'ArrowUp' && showMenu && suggestions.length) { e.preventDefault(); setHighlight((h) => Math.max(-1, h - 1)) }
           else if (e.key === 'Tab' && showMenu && suggestions.length) { e.preventDefault(); accept(suggestions[Math.max(0, highlight)]) }
           else if (e.key === 'Enter') {
             e.preventDefault()
             if (showMenu && highlight >= 0 && suggestions[highlight]) accept(suggestions[highlight])
-            else { apply(text, true); setMenuOpen(false) }
+            else { const rest = commit(text, true); placeCaret(rest.length); setMenuOpen(false) }
+          } else if (e.key === 'Backspace' && el.selectionStart === 0 && el.selectionEnd === 0 && pills.length) {
+            // Like Datadog: backspacing past the start reopens the last pill for editing.
+            e.preventDefault()
+            editPill(pills.length - 1)
           } else if (e.key === 'Escape') {
             e.stopPropagation()
             if (menuOpen) setMenuOpen(false)
-            else inputRef.current?.blur()
+            else el.blur()
           }
         }} />
-      {text && <button className="query-clear" title="Clear" onMouseDown={(e) => e.preventDefault()} onClick={() => { setDraft(''); apply('', true) }}>×</button>}
+      {(text || pills.length > 0) && (
+        <button className="query-clear" title="Clear all filters and search" onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { setText(''); p.onChange([], '') }}>×</button>
+      )}
       {showMenu && (
         <div className="query-menu" onMouseDown={(e) => e.preventDefault()}>
           {suggestions.length > 0 && (
@@ -156,13 +187,38 @@ export const QueryBar = forwardRef<QueryBarHandle, Props>(function QueryBar(p, r
           ))}
           {shownIssues.map((issue, i) => <div key={i} className="query-issue">⚠ {issue.message}</div>)}
           <div className="query-help">
-            <span><b>Tab</b> complete</span><span><b>↑↓</b> choose</span><span><b>"…"</b> spaces</span><span><b>-</b> exclude</span><span><b>(a OR b)</b></span><span><b>&gt; &lt; [a TO b]</b></span><span><b>*</b> wildcard</span>
+            <span><b>Tab</b> complete</span><span><b>↑↓</b> choose</span><span><b>"…"</b> spaces</span><span><b>-</b> exclude</span><span><b>(a OR b)</b></span><span><b>&gt; &lt; [a TO b]</b></span><span><b>*</b> wildcard</span><span><b>⌫</b> edit last</span>
           </div>
         </div>
       )}
     </div>
   )
 })
+
+/** Colors a pill's query text like Datadog: field, colon and value each styled differently. */
+function PillText({ text }: { text: string }) {
+  const terms = tokenize(text)
+  if (terms.length === 0) return <span className="qv">{text}</span>
+  return (
+    <span className="qpill-text">
+      {terms.map((t, i) => (
+        <span key={i}>
+          {i > 0 && ' '}
+          {t.neg && <span className="qneg">-</span>}
+          {t.field != null && t.valueStart != null ? (
+            <>
+              <span className="qf">{text.slice(t.start + (t.neg ? 1 : 0), t.valueStart - 1)}</span>
+              <span className="qc">:</span>
+              <span className="qv">{text.slice(t.valueStart, t.end)}</span>
+            </>
+          ) : (
+            <span className="qv">{text.slice(t.start + (t.neg ? 1 : 0), t.end)}</span>
+          )}
+        </span>
+      ))}
+    </span>
+  )
+}
 
 function suggest(target: CompletionTarget, index: ReturnType<typeof buildFieldIndex>, facetRowsFor: (col: string) => Row[]): Suggestion[] {
   if (target.kind === 'field') {
@@ -173,7 +229,6 @@ function suggest(target: CompletionTarget, index: ReturnType<typeof buildFieldIn
       if (score >= 0) scored.push([score, field, col])
     }
     scored.sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1]))
-    // A word that's already a complete field name with no colon yet still offers that field.
     return scored.slice(0, MAX_SUGGESTIONS).map(([, field, col]) => ({
       insert: `${field}:`, label: field, hint: col.label === field ? col.group : `${col.label} · ${col.group}`, kind: 'field',
     }))

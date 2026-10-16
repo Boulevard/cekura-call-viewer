@@ -251,6 +251,8 @@ export interface ParsedQuery {
   freeText: string
   issues: QueryIssue[]
   terms: Term[]
+  /** Field terms that turned into filters. */
+  applied: Term[]
 }
 
 const BINARY_WORDS: Record<string, string | null> = {
@@ -319,6 +321,7 @@ export function parseQuery(text: string, ctx: QueryContext): ParsedQuery {
   const issues: QueryIssue[] = []
   const free: string[] = []
   const byCol = new Map<string, Filter>()
+  const applied: Term[] = []
 
   for (const t of terms) {
     if (!t.field) {
@@ -330,6 +333,7 @@ export function parseQuery(text: string, ctx: QueryContext): ParsedQuery {
     if (!col) { issues.push({ start: t.start, end: t.end, message: `unknown field "${t.field}"` }); continue }
     const f = termToFilter(t, col, ctx)
     if (typeof f === 'string') { issues.push({ start: t.start, end: t.end, message: `${t.field}: ${f}` }); continue }
+    applied.push(t)
     // Two bounds on one field (duration:>30 duration:<120) combine into one range.
     const prev = byCol.get(col.key)
     if (prev?.type === 'range' && f.type === 'range') {
@@ -342,7 +346,7 @@ export function parseQuery(text: string, ctx: QueryContext): ParsedQuery {
       byCol.set(col.key, f)
     }
   }
-  return { filters: [...byCol.values()], freeText: free.join(' '), issues, terms }
+  return { filters: [...byCol.values()], freeText: free.join(' '), issues, terms, applied }
 }
 
 /** Values in the loaded rows for one column, keyed by lowercase for case-insensitive matching. */
@@ -386,4 +390,18 @@ export function completionAt(text: string, caret: number, index: FieldIndex): Co
   const raw = text.slice(from, caret)
   const partial = raw.replace(/^"/, '').replace(/\\(.)/g, '$1')
   return { kind: 'value', from, to, partial, col, field: term.field, inList, term }
+}
+
+/** Adds filters to a list: one filter per column, with two ranges on a column combined. */
+export function mergeFilters(existing: Filter[], added: Filter[]): Filter[] {
+  const out = [...existing]
+  for (const f of added) {
+    const i = out.findIndex((x) => x.col === f.col)
+    if (i < 0) { out.push(f); continue }
+    const prev = out[i]
+    out[i] = prev.type === 'range' && f.type === 'range'
+      ? { ...prev, ...(f.min != null ? { min: f.min, minExcl: f.minExcl } : {}), ...(f.max != null ? { max: f.max, maxExcl: f.maxExcl } : {}) }
+      : f
+  }
+  return out
 }
