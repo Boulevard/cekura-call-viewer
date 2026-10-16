@@ -48,7 +48,20 @@ Simulation runs are found through their results (test-suite executions) created 
 - **Header summaries:** pass rate and failure count for pass/fail metrics, average for numbers, number of distinct values for text. Click a header's `N✗` to show only the failures.
 - **Sorting:** click a header; shift-click to add a secondary sort. Empty values always sort last.
 - **Filtering:** use **+ Filter** or a header's `⋮` menu. Value lists come with live counts, numbers and times filter by range, and text filters by substring. Alt-click any cell to filter to that value.
-- **Search:** matches the text of any column (as shown in the table) plus IDs without their own column: call, run, result, scenario and Cekura agent IDs. Use `*` as a wildcard within a column, e.g. `conv_*b2f` or `*tampa*salon*`. Searching a result ID unfolds that result.
+- **Query bar:** the box at the top of the table takes Datadog-style queries and plain search text, and always shows the current filters as text. Editing it updates the filters, and changing filters anywhere else (sidebar, chips, header menus, alt-click, saved views) rewrites it. Autocomplete suggests field names as you type, then that field's values with counts; **Tab** completes, **↑/↓** choose. A term only applies once its field and value exist in the data, so half-typed values don't empty the table; mistakes are listed in the dropdown and keep their text until fixed.
+
+  | Syntax | Meaning |
+  | --- | --- |
+  | `agent:"AI Receptionist - 11Labs prod"` | equals (quote values with spaces; case-insensitive) |
+  | `-success:fail` | exclude |
+  | `ended_reason:(user_hangup OR agent_hangup)` | any of |
+  | `business_name:*salon*`, `call_id:conv_*b2f` | wildcard |
+  | `branch:*` / `-feedback:*` | has a value / is empty |
+  | `duration:>60`, `duration:<=2:00`, `duration:[0:30 TO 2:00]` | numbers, durations (m:ss or seconds) and times (`time:[2026-10-16T09:00 TO 2026-10-16T12:00]`) |
+  | `tool_call_failure:fail` | pass/fail metrics take `pass`, `fail` or `na` |
+  | anything else | free-text search across every column and ID (call, run, result, scenario, Cekura agent); `*` works as a wildcard here too |
+
+  Field names are short forms of the column names (`agent`, `provider_agent`, `branch`, `result`, `scenario`, `ended_reason`…); metrics use their name in snake_case. Searching a result ID unfolds that result.
 - **CSV:** exports the filtered rows with the visible columns, plus Cekura and provider links.
 
 Metrics that Cekura skipped (trigger not met, or `VALID_SKIP`) show as **N/A**. Cekura's own list reports them as passed, so pass rates here can be lower than in the dashboard.

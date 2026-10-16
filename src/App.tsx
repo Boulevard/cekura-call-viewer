@@ -15,6 +15,7 @@ import { Popover } from './components/Popover'
 import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
+import { QueryBar, type QueryBarHandle } from './components/QueryBar'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
@@ -152,7 +153,7 @@ export default function App() {
   const [facetKeys, setFacetKeys] = usePersistentState<string[]>('facets', DEFAULT_FACETS)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const searchRef = useRef<HTMLInputElement>(null)
+  const searchRef = useRef<QueryBarHandle>(null)
 
   useEffect(() => {
     if (!shared) return
@@ -503,7 +504,6 @@ export default function App() {
         <button className="btn primary icon" onClick={() => load()} disabled={!!progress} title="Reload">{progress ? '…' : '↻'}</button>
         {progress && <button className="btn ghost" onClick={() => { abortRef.current?.abort(); setProgress(null) }}>Cancel</button>}
         <span className="spacer" />
-        <input ref={searchRef} className="search" placeholder="Search IDs, phones, results, scenarios…  /" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="popover-anchor">
           <button className="btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>
           {popover === 'columns' && (
@@ -556,6 +556,11 @@ export default function App() {
 
           <div className="table-card">
             <div className="table-card-head">
+              <QueryBar ref={searchRef} columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
+                facetRowsFor={facetRowsFor}
+                onChange={(filters, freeText) => { setView((v) => ({ ...v, filters })); setSearch(freeText) }} />
+            </div>
+            <div className="table-card-head sub">
               <FilterBar columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
                 onSetFilter={setFilter} onClearAll={() => setView((v) => ({ ...v, filters: [] }))} />
               <div className="table-meta">
