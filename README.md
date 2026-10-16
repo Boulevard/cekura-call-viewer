@@ -26,7 +26,6 @@ All settings go in `.env.local` (gitignored). Only the API key is required.
 | --- | --- | --- |
 | `CEKURA_API_KEY` | – | Cekura API key. The dev server adds it to API requests, so it never reaches the browser. |
 | `VITE_CEKURA_PROJECT_ID` | `3201` | Project the app opens on before you've picked one. |
-| `ELEVENLABS_MANAGED_AGENTS_DIR` | `~/boulevard/ai-receptionist/packages/elevenlabs/agents/_managed` | Folder of `<family>/environments.json` files used to show ElevenLabs branch and agent names instead of raw IDs. Without it you just see the IDs. |
 
 The ⚙ Settings dialog also lets you set an API key in the browser (stored in localStorage), raise the cap on how many calls are loaded, and change the ElevenLabs and Retell link formats.
 
@@ -37,6 +36,11 @@ The ⚙ Settings dialog also lets you set an API key in the browser (stored in l
 Pick a project, an optional agent ID, and a time range, then use the **Calls** and **Simulations** toggles to choose what to load. Turn both on to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
 
 Simulation runs are found through their results (test-suite executions) created in the range. They show a `SIM` tag, and the **Simulation** column group adds result, scenario, personality, expected outcome (met / partial / not met), evaluation status and agent version.
+
+### Layout
+
+- **Sidebar:** your saved views, plus checkbox filters with counts for Source, Success, Agent and Ended reason. Use **+ Add filter section** for any other column, × to remove one, and « to collapse the sidebar. While a call is open it shrinks to a slim rail.
+- **Theme:** ☀ / ☾ in the toolbar switches between light and dark. Until you pick one, it follows your system setting.
 
 ### Columns, sorting and filtering
 
@@ -55,7 +59,7 @@ With **Group by result** on, runs from the same result fold under a result row, 
 
 ### Provider agent and branch
 
-The **Provider agent** column shows the ElevenLabs or Retell agent that handled each call or run, and **Branch (11Labs)** shows the ElevenLabs branch. Names come from the `environments.json` files described above, and the raw IDs show on hover. Branches for production ElevenLabs calls need a large extra request per call (about 250KB), so they're only fetched while the Branch column is shown or used in a filter or sort.
+**Provider agent** shows the ElevenLabs or Retell `agent_id` that handled each call or run (the **Agent** column is the Cekura agent), and **Branch (11Labs)** shows the ElevenLabs `branch_id`. Both are in the default view. Branches for production ElevenLabs calls need a large extra request per call (about 250KB), so they're only fetched while the Branch column is shown or used in a filter or sort; hide the column to skip that on long time ranges.
 
 ### Call detail
 
@@ -80,6 +84,7 @@ Each call or run has its own URL (`#call=<id>` or `#run=<id>`), so you can share
 | `Space` | Same as Enter; on a run inside an open result, collapses that result |
 | `Esc` | Close the detail panel or the open menu |
 | `/` | Focus search |
+| `?` | Show all shortcuts |
 
 ### Saved views
 
@@ -89,7 +94,7 @@ Views are stored in `views.json` in the project folder, written by the dev serve
 
 ## How it works
 
-- `pnpm dev` runs a Vite dev server that serves the app and proxies `/cekura/*` to `https://api.cekura.ai`, adding your API key. It also serves two small local endpoints: one reads and writes `views.json`, the other reads the ElevenLabs names.
+- `pnpm dev` runs a Vite dev server that serves the app and proxies `/cekura/*` to `https://api.cekura.ai`, adding your API key. It also serves a small local endpoint that reads and writes `views.json`.
 - Everything else happens in the browser. The list is loaded once per query and kept in memory, which is why filtering and sorting are instant. Row details are fetched when you open them.
 - Because the proxy adds your API key to every request, only run it on your own machine. Don't expose the dev server on a network or deploy it.
 
@@ -102,7 +107,7 @@ src/
   views.ts          Saved views and views.json sync
   App.tsx           State, loading, keyboard shortcuts, toolbar
   components/       Table, detail panel, transcript, filter and column pickers, menus
-vite.config.ts      Dev server: API proxy and the two local endpoints
+vite.config.ts      Dev server: API proxy and the views.json endpoint
 ```
 
 ## Development
@@ -118,5 +123,4 @@ pnpm build      # typecheck + production build (what CI runs)
 - **401/403 when loading:** `CEKURA_API_KEY` is missing or wrong in `.env.local`. Restart `pnpm dev` after changing it.
 - **Some agents are missing:** they probably had no production calls in the time range. Dev agents usually only appear as simulation runs, so turn on **Simulations** or widen the range.
 - **A run says "not linked to a provider call":** Cekura couldn't match the run to an ElevenLabs or Retell conversation. Hover the cell for Cekura's error message.
-- **Branches and agents show raw IDs:** the ElevenLabs names folder wasn't found. Set `ELEVENLABS_MANAGED_AGENTS_DIR`.
 - **Saved views are missing:** the app isn't running under `pnpm dev`, so it can't reach `views.json` and falls back to the browser's copy. The Views menu says where views are being saved.

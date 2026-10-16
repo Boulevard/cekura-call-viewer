@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, fetchCallBranches, fetchProviderNames, listCalls, listProviderAgents, listSims, type ProviderAgent, type ProviderNames } from './api'
-import { buildModel, DEFAULT_VISIBLE, SIM_COLUMNS, type Column } from './columns'
+import { ApiError, fetchCallBranches, listCalls, listProjects, listProviderAgents, listSims, type Project } from './api'
+import { buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
 import { load as loadStored, save, usePersistentState } from './storage'
@@ -14,17 +14,23 @@ import { FilterBar } from './components/FilterBar'
 import { Popover } from './components/Popover'
 import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
+import { ProjectPicker } from './components/ProjectPicker'
+import { Sidebar } from './components/Sidebar'
+import { ShortcutsDialog } from './components/ShortcutsDialog'
+import { useTheme } from './theme'
 import { fetchViewsFile, isModified, loadSavedViews, newViewId, writeViewsFile, type DataSource, type SavedView, type ViewQuery } from './views'
 
 const PRESETS = [
-  { key: '1h', label: '1h', ms: 3600e3 },
-  { key: '6h', label: '6h', ms: 6 * 3600e3 },
-  { key: '24h', label: '24h', ms: 24 * 3600e3 },
-  { key: '3d', label: '3d', ms: 3 * 86400e3 },
-  { key: '7d', label: '7d', ms: 7 * 86400e3 },
-  { key: '30d', label: '30d', ms: 30 * 86400e3 },
+  { key: '1h', label: '1h', title: 'Last hour', ms: 3600e3 },
+  { key: '6h', label: '6h', title: 'Last 6 hours', ms: 6 * 3600e3 },
+  { key: '24h', label: '24h', title: 'Last 24 hours', ms: 24 * 3600e3 },
+  { key: '3d', label: '3d', title: 'Last 3 days', ms: 3 * 86400e3 },
+  { key: '7d', label: '7d', title: 'Last 7 days', ms: 7 * 86400e3 },
+  { key: '30d', label: '30d', title: 'Last 30 days', ms: 30 * 86400e3 },
 ]
 const MAX_RANGE_MS = 33 * 86400e3
+// Sidebar filter sections shown until the user picks their own.
+const DEFAULT_FACETS = ['source', 'success', 'agent_name', 'call_ended_reason']
 
 type Query = ViewQuery
 
@@ -120,10 +126,16 @@ export default function App() {
   } | null>(null)
   const callsRef = useRef(calls)
   callsRef.current = calls
-  const [repoNames, setNames] = useState<ProviderNames>({ agents: {}, branches: {} })
-  const [agentFallbackNames, setAgentFallbackNames] = useState<Record<string, string>>({})
-  const names = useMemo(() => ({ ...repoNames, agents: { ...agentFallbackNames, ...repoNames.agents } }), [repoNames, agentFallbackNames])
-  useEffect(() => { fetchProviderNames().then(setNames) }, [])
+  const [projects, setProjects] = useState<Project[]>([])
+  useEffect(() => { listProjects(settings).then(setProjects, () => setProjects([])) }, [settings])
+  // Only projects the key can see are selectable. A saved, shared or default project that isn't
+  // one of them (a stale ID, or another team's link) falls back to the first one that is.
+  useEffect(() => {
+    if (projects.length === 0 || projects.some((p) => p.id === query.projectId)) return
+    const q = { ...query, projectId: projects[0].id, agentId: '' }
+    setQuery(q)
+    loadRef.current(q)
+  }, [projects, query, setQuery])
   const [branchProgress, setBranchProgress] = useState<{ done: number; total: number } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -134,6 +146,10 @@ export default function App() {
   const [groupByResult, setGroupByResult] = usePersistentState('groupByResult', true)
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set())
   const [popover, setPopover] = useState<'columns' | 'views' | null>(null)
+  const [theme, toggleTheme] = useTheme()
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistentState('sidebarCollapsed', false)
+  const [facetKeys, setFacetKeys] = usePersistentState<string[]>('facets', DEFAULT_FACETS)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -175,19 +191,15 @@ export default function App() {
         source !== 'sims' ? listCalls(settings, listQuery, report('calls'), ctrl.signal) : null,
         source !== 'calls' ? listSims(settings, listQuery, report('sims'), ctrl.signal) : null,
         // Only used to label rows; a failure here shouldn't block the list.
-        listProviderAgents(settings, q.projectId).catch(() => new Map<number, ProviderAgent>()),
+        listProviderAgents(settings, q.projectId).catch(() => new Map<number, string>()),
       ])
       const withAgents = [...(callRes?.calls ?? []), ...(simRes?.calls ?? [])].map((c) => ({
         ...c,
-        providerAgentId: c.providerAgentId ?? providerAgents.get(c.agent)?.assistantId ?? null,
+        providerAgentId: c.providerAgentId ?? providerAgents.get(c.agent) ?? null,
         // Production ElevenLabs calls start with an unknown branch (undefined) until it's fetched.
         branchId: c.source === 'sim' ? c.branchId ?? null : c.call_id?.startsWith('conv_') ? undefined : null,
       }))
       setCalls(withAgents)
-      // Provider agents only one Cekura agent uses (the Retell ones, here) are labeled with that agent.
-      const users = new Map<string, string[]>()
-      for (const a of providerAgents.values()) users.set(a.assistantId, [...(users.get(a.assistantId) ?? []), a.name])
-      setAgentFallbackNames(Object.fromEntries([...users].filter(([, n]) => n.length === 1).map(([id, [n]]) => [id, n])))
       setMeta({
         total: (callRes?.total ?? 0) + (simRes?.total ?? 0),
         truncated: !!callRes?.truncated || !!simRes?.truncated,
@@ -200,9 +212,12 @@ export default function App() {
       })
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
-      setError(e instanceof ApiError && (e.status === 401 || e.status === 403)
+      // 401 means the key itself is missing or wrong; 403 means it's valid but can't see this project.
+      setError(e instanceof ApiError && e.status === 401
         ? `${e.message}. Set an API key in Settings, or CEKURA_API_KEY in .env.local.`
-        : String((e as Error).message ?? e))
+        : e instanceof ApiError && e.status === 403
+          ? `Your API key doesn't have access to project ${q.projectId}.`
+          : String((e as Error).message ?? e))
     } finally {
       if (abortRef.current === ctrl) setProgress(null)
     }
@@ -215,7 +230,7 @@ export default function App() {
     loadRef.current(shared?.query ? { ...DEFAULT_QUERY, ...shared.query } : undefined)
   }, [shared])
 
-  const model = useMemo(() => buildModel(calls, names), [calls, names])
+  const model = useMemo(() => buildModel(calls), [calls])
 
   // Branches for production ElevenLabs calls are expensive to fetch, so only do it while the
   // branch column is on screen or being filtered/sorted on.
@@ -238,6 +253,30 @@ export default function App() {
     return () => ctrl.abort()
   }, [needsBranch, meta, settings])
   const colMap = useMemo(() => new Map(model.columns.map((c) => [c.key, c])), [model.columns])
+
+  // One-time: the provider agent and branch columns joined the default view after views were already being persisted.
+  useEffect(() => {
+    if (loadStored('migratedProviderColumns', false)) return
+    save('migratedProviderColumns', true)
+    setView((v) => {
+      const missing = ['provider_agent', 'branch'].filter((k) => !v.visible.includes(k))
+      if (missing.length === 0) return v
+      const next = [...v.visible]
+      const at = next.indexOf('agent_name')
+      next.splice(at >= 0 ? at + 1 : next.length, 0, ...missing)
+      return { ...v, visible: next }
+    })
+  }, [setView])
+
+  // One-time: business and location columns joined the default view after views were already
+  // being persisted. Applied once the loaded data actually has those metrics.
+  useEffect(() => {
+    if (loadStored('migratedBusinessColumns', false)) return
+    const has = model.columns.some((c) => c.metricId != null && DEFAULT_METRIC_NAMES.some((n) => n.toLowerCase() === c.label.toLowerCase()))
+    if (!has) return
+    save('migratedBusinessColumns', true)
+    setView((v) => ({ ...v, visible: withDefaultMetrics(v.visible, model.columns) }))
+  }, [model.columns, setView])
   const visibleCols = useMemo(() => view.visible.map((k) => colMap.get(k)).filter((c): c is Column => !!c), [view.visible, colMap])
   const filtered = useMemo(() => applyFilters(model.rows, view.filters, search), [model.rows, view.filters, search])
   const sorted = useMemo(() => applySort(filtered, view.sort, colMap), [filtered, view.sort, colMap])
@@ -345,6 +384,7 @@ export default function App() {
       }
       else if (e.key === 'G') step(Infinity)
       else if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
+      else if (e.key === '?') setShowShortcuts(true)
       else if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); step(1) }
       else if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); step(-1) }
       else if ((e.key === 'Enter' || e.key === ' ') && !t.closest('button, a, audio')) {
@@ -397,15 +437,17 @@ export default function App() {
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [calls])
 
+  const sourceLabel = (query.source ?? 'calls') === 'calls' ? 'calls' : query.source === 'sims' ? 'simulation runs' : 'calls & runs'
+
   return (
-    <div className={`app ${selectedRow ? 'with-detail' : ''}`}>
+    <div className="app">
       <header className="toolbar">
-        <div className="brand">Cekura Calls</div>
-        <label className="field">Project
-          <input className="narrow" type="number" value={query.projectId} onChange={(e) => setQuery({ ...query, projectId: Number(e.target.value) })} />
-        </label>
-        <label className="field">Agent ID
-          <input className="narrow" list="agents" placeholder="all" value={query.agentId} onChange={(e) => setQuery({ ...query, agentId: e.target.value })} />
+        <div className="brand"><span className="brand-mark" /><span className="brand-text">Cekura Calls</span></div>
+        <ProjectPicker projects={projects} value={query.projectId}
+          onChange={(projectId) => { const q = { ...query, projectId, agentId: '' }; setQuery(q); load(q) }} />
+        <label className="field-pill" title="Only load one Cekura agent (all agents when empty)">Agent
+          <input list="agents" placeholder="all" value={query.agentId} onChange={(e) => setQuery({ ...query, agentId: e.target.value })}
+            onKeyDown={(e) => e.key === 'Enter' && load()} />
           <datalist id="agents">{agents.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</datalist>
         </label>
         <div className="source-toggles">
@@ -428,16 +470,21 @@ export default function App() {
             )
           })}
         </div>
-        <div className="seg">
-          {PRESETS.map((p) => (
-            <button key={p.key} className={query.range === p.key ? 'on' : ''} onClick={() => { const q = { ...query, range: p.key }; setQuery(q); load(q) }}>{p.label}</button>
-          ))}
-          <button className={query.range === 'custom' ? 'on' : ''} onClick={() => {
+        <select value={query.range} title="Time range" onChange={(e) => {
+          const range = e.target.value
+          if (range === 'custom') {
             const r = meta ?? resolveRange(query)
             const local = (iso: string) => new Date(Date.parse(iso) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-            setQuery({ ...query, range: 'custom', from: query.from || local(r.from), to: query.to || local(r.to) })
-          }}>Custom</button>
-        </div>
+            setQuery({ ...query, range, from: query.from || local(r.from), to: query.to || local(r.to) })
+            return
+          }
+          const q = { ...query, range }
+          setQuery(q)
+          load(q)
+        }}>
+          {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.title}</option>)}
+          <option value="custom">Custom range…</option>
+        </select>
         {query.range === 'custom' && (
           <>
             <input type="datetime-local" value={query.from} onChange={(e) => setQuery({ ...query, from: e.target.value })} />
@@ -445,21 +492,22 @@ export default function App() {
             <input type="datetime-local" value={query.to} onChange={(e) => setQuery({ ...query, to: e.target.value })} />
           </>
         )}
-        <button className="btn primary" onClick={() => load()} disabled={!!progress}>{progress ? 'Loading…' : 'Reload'}</button>
+        <button className="btn primary icon" onClick={() => load()} disabled={!!progress} title="Reload">{progress ? '…' : '↻'}</button>
         {progress && <button className="btn ghost" onClick={() => { abortRef.current?.abort(); setProgress(null) }}>Cancel</button>}
         <span className="spacer" />
-        <input ref={searchRef} className="search" placeholder="Search ID, phone, agent, enum values…  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input ref={searchRef} className="search" placeholder="Search calls, phones, scenarios…  /" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="popover-anchor">
-          <button className="btn" onClick={() => setPopover('columns')}>Columns ({visibleCols.length})</button>
+          <button className="btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>
           {popover === 'columns' && (
             <Popover onClose={() => setPopover(null)} align="right" className="xwide">
-              <ColumnPicker columns={model.columns} visible={view.visible} rows={filtered} onChange={(visible) => setView((v) => ({ ...v, visible }))} />
+              <ColumnPicker columns={model.columns} visible={view.visible} rows={filtered} defaultVisible={withDefaultMetrics(DEFAULT_VISIBLE, model.columns)}
+                onChange={(visible) => setView((v) => ({ ...v, visible }))} />
             </Popover>
           )}
         </div>
         <div className="popover-anchor">
           <button className={`btn view-btn ${activeView ? 'has-view' : ''}`} onClick={() => setPopover('views')} title="Saved views">
-            <span className="muted">View:</span> {activeView ? activeView.name : 'Unsaved'}
+            <span className="ellipsis">{activeView ? activeView.name : 'Unsaved view'}</span>
             {viewModified && <span className="view-dot" title="Unsaved changes" />}
             <span className="muted">▾</span>
           </button>
@@ -476,88 +524,94 @@ export default function App() {
                   if (id === activeViewId) setActiveViewId(null)
                 }}
                 onCopyLink={copyViewLink}
-                onReset={() => { setView(DEFAULT_VIEW); setActiveViewId(null); setPopover(null) }} />
+                onReset={() => { setView({ ...DEFAULT_VIEW, visible: withDefaultMetrics(DEFAULT_VISIBLE, model.columns) }); setActiveViewId(null); setPopover(null) }} />
             </Popover>
           )}
         </div>
-        <button className="btn" onClick={() => downloadCsv(sorted, visibleCols, settings)} disabled={!sorted.length}>CSV</button>
-        <button className="btn ghost" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
+        <button className="btn" onClick={() => downloadCsv(sorted, visibleCols, settings)} disabled={!sorted.length}>Export</button>
+        <button className="btn ghost icon" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? '☀' : '☾'}</button>
+        <button className="btn ghost icon" onClick={() => setShowShortcuts(true)} title="Keyboard shortcuts (?)">?</button>
+        <button className="btn ghost icon" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
       </header>
 
-      <FilterBar columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
-        onSetFilter={setFilter} onClearAll={() => setView((v) => ({ ...v, filters: [] }))} />
+      <div className="body">
+        {/* With a call open the detail panel needs the room, so the sidebar folds to a rail. */}
+        <Sidebar collapsed={sidebarCollapsed || !!selectedRow}
+          onToggleCollapsed={() => { if (selectedRow) { select(null); setSidebarCollapsed(false) } else setSidebarCollapsed(!sidebarCollapsed) }}
+          views={savedViews} activeViewId={activeViewId} viewModified={viewModified} onApplyView={applyView}
+          onManageViews={() => setPopover('views')}
+          columns={model.columns} facetKeys={facetKeys} filters={view.filters} facetRowsFor={facetRowsFor}
+          onSetFilter={setFilter} onSetFacetKeys={setFacetKeys} />
 
-      <div className="status-bar">
-        {progress ? (
-          <span>Loading {progress.loaded.toLocaleString()} / {progress.total ? progress.total.toLocaleString() : '…'}{' '}
-            {(query.source ?? 'calls') === 'calls' ? 'calls' : (query.source === 'sims' ? 'simulation runs' : 'calls & runs')}
-            <span className="progress"><span style={{ width: `${progress.total ? (progress.loaded / progress.total) * 100 : 0}%` }} /></span>
-          </span>
-        ) : meta && (
-          <span>
-            <b>{sorted.length.toLocaleString()}</b> of {calls.length.toLocaleString()}{' '}
-            {meta.sims == null ? 'calls' : meta.calls == null ? 'simulation runs' : 'rows'}
-            {meta.sims != null && (
-              <span className="muted">
-                {' '}({meta.calls != null && `${meta.calls.toLocaleString()} calls, `}
-                {meta.sims.toLocaleString()} runs from {meta.results?.toLocaleString()} results)
-              </span>
-            )}
-            {!!meta.sims && !SIM_COLUMNS.some((k) => view.visible.includes(k)) && (
-              <button className="link sim-cols-btn" onClick={() => setView((v) => ({ ...v, visible: [...v.visible, ...SIM_COLUMNS] }))}>
-                Show result & scenario columns
-              </button>
-            )}
-            {meta.truncated && <span className="warn"> (capped — {meta.total.toLocaleString()}{meta.total >= 10000 ? '+' : ''} in range; narrow the range or raise the cap in Settings)</span>}
-            <span className="muted"> · {new Date(meta.from).toLocaleString()} → {new Date(meta.to).toLocaleString()} · loaded {meta.at.toLocaleTimeString()}</span>
-          </span>
-        )}
-        {branchProgress && (
-          <span className="muted small branch-progress">Loading 11Labs branches {branchProgress.done}/{branchProgress.total}…</span>
-        )}
-        {hasSims && (
-          <span className="group-controls">
-            <button className={`toggle small ${groupByResult ? 'on' : ''}`} aria-pressed={groupByResult} onClick={() => setGroupByResult(!groupByResult)}
-              title="Fold simulation runs under their result, like Cekura's result page">
-              <span className="toggle-box">{groupByResult ? '✓' : ''}</span>Group by result
-            </button>
-            {groupByResult && (
-              <>
-                <button className="link" onClick={() => setExpandedResults(new Set(sorted.flatMap((r) => (r.call.sim ? [r.call.sim.resultId] : []))))}>Expand all</button>
-                <button className="link" onClick={() => setExpandedResults(new Set())}>Collapse all</button>
-              </>
-            )}
-          </span>
-        )}
-        <span className="spacer" />
-        <span className="muted small">click header to sort · shift-click multi-sort · alt-click cell to filter · drag headers to reorder · j/k move · ctrl-d/u page · gg/G top/bottom · enter opens · space opens/folds · esc closes</span>
-      </div>
-      {error && <div className="error banner">{error}</div>}
+        <div className="content">
+          {error && <div className="error banner">{error}</div>}
 
-      <main className="main">
-        <CallTable columns={visibleCols} rows={sorted} items={display} onToggleGroup={toggleGroup} sort={view.sort} filters={view.filters} widths={view.widths}
-          selectedId={selectedId} cursorId={cursorId} settings={settings} facetRowsFor={facetRowsFor}
-          onSort={onSort}
-          onSelect={(r) => select(r.call.uid)}
-          onResize={(col, w) => setView((v) => ({ ...v, widths: { ...v.widths, [col]: w } }))}
-          onReorder={(from, to) => setView((v) => {
-            const next = v.visible.filter((k) => k !== from)
-            next.splice(next.indexOf(to), 0, from)
-            return { ...v, visible: next }
-          })}
-          onHide={(col) => setView((v) => ({ ...v, visible: v.visible.filter((k) => k !== col) }))}
-          onSetFilter={setFilter} />
+          <div className="table-card">
+            <div className="table-card-head">
+              <FilterBar columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
+                onSetFilter={setFilter} onClearAll={() => setView((v) => ({ ...v, filters: [] }))} />
+              <div className="table-meta">
+                {progress ? (
+                  <span>Loading {progress.loaded.toLocaleString()} / {progress.total ? progress.total.toLocaleString() : '…'} {sourceLabel}
+                    <span className="progress"><span style={{ width: `${progress.total ? (progress.loaded / progress.total) * 100 : 0}%` }} /></span>
+                  </span>
+                ) : meta && (
+                  <span title={`${new Date(meta.from).toLocaleString()} → ${new Date(meta.to).toLocaleString()} · loaded ${meta.at.toLocaleTimeString()}`}>
+                    <b>{sorted.length.toLocaleString()}</b> of {calls.length.toLocaleString()} {meta.sims == null ? 'calls' : meta.calls == null ? 'runs' : 'rows'}
+                    {meta.sims != null && <> · {meta.results?.toLocaleString()} results</>}
+                    {meta.truncated && <span className="warn" title="Narrow the range or raise the cap in Settings"> · capped at {calls.length.toLocaleString()}</span>}
+                    {' '}· loaded {meta.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                )}
+                {branchProgress && <span className="branch-progress">Loading 11Labs branches {branchProgress.done}/{branchProgress.total}…</span>}
+                {!!meta?.sims && !SIM_COLUMNS.some((k) => view.visible.includes(k)) && (
+                  <button className="link" onClick={() => setView((v) => ({ ...v, visible: [...v.visible, ...SIM_COLUMNS] }))}>Show result & scenario columns</button>
+                )}
+                {hasSims && (
+                  <span className="group-controls">
+                    <button className={`toggle small ${groupByResult ? 'on' : ''}`} aria-pressed={groupByResult} onClick={() => setGroupByResult(!groupByResult)}
+                      title="Fold simulation runs under their result, like Cekura's result page">
+                      <span className="toggle-box">{groupByResult ? '✓' : ''}</span>Group by result
+                    </button>
+                    {groupByResult && (
+                      <>
+                        <button className="link" onClick={() => setExpandedResults(new Set(sorted.flatMap((r) => (r.call.sim ? [r.call.sim.resultId] : []))))}>Expand all</button>
+                        <button className="link" onClick={() => setExpandedResults(new Set())}>Collapse all</button>
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="table-card-body">
+              <CallTable columns={visibleCols} rows={sorted} items={display} onToggleGroup={toggleGroup} sort={view.sort} filters={view.filters} widths={view.widths}
+                selectedId={selectedId} cursorId={cursorId} settings={settings} facetRowsFor={facetRowsFor}
+                onSort={onSort}
+                onSelect={(r) => select(r.call.uid)}
+                onResize={(col, w) => setView((v) => ({ ...v, widths: { ...v.widths, [col]: w } }))}
+                onReorder={(from, to) => setView((v) => {
+                  const next = v.visible.filter((k) => k !== from)
+                  next.splice(next.indexOf(to), 0, from)
+                  return { ...v, visible: next }
+                })}
+                onHide={(col) => setView((v) => ({ ...v, visible: v.visible.filter((k) => k !== col) }))}
+                onSetFilter={setFilter} />
+            </div>
+          </div>
+        </div>
+
         {selectedRow && (
           <CallDetail key={selectedRow.call.uid} row={selectedRow} settings={settings}
             position={selectedIndex >= 0 ? `${selectedIndex + 1} / ${sorted.length}` : 'not in filtered list'}
             onClose={() => select(null)} onPrev={() => step(-1)} onNext={() => step(1)} />
         )}
-      </main>
+      </div>
 
       {showSettings && (
         <SettingsDialog settings={settings} onClose={() => setShowSettings(false)}
           onSave={(s) => { setSettings(s); saveSettings(s) }} />
       )}
+      {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
     </div>
   )
 }

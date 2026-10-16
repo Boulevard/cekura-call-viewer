@@ -1,5 +1,4 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import type { Connect } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
@@ -42,44 +41,18 @@ const viewsFileApi: Connect.NextHandleFunction = (req, res, next) => {
   res.end('{"error":"method not allowed"}')
 }
 
-// Branch and agent IDs are opaque, so names come from the ai-receptionist repo's managed
-// ElevenLabs environments (one environments.json per agent family) when it's checked out.
-function elevenLabsNamesApi(dir: string): Connect.NextHandleFunction {
-  return (req, res, next) => {
-    if (req.url !== '/local-api/elevenlabs-names') return next()
-    const agents: Record<string, string> = {}
-    const branches: Record<string, string> = {}
-    try {
-      for (const family of fs.readdirSync(dir)) {
-        const file = path.join(dir, family, 'environments.json')
-        if (!fs.existsSync(file)) continue
-        const envs = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, { agent_id?: string; branch_id?: string; name?: string }>
-        for (const [env, e] of Object.entries(envs)) {
-          if (e.agent_id && (e.name || !agents[e.agent_id])) agents[e.agent_id] = e.name ?? `${family} (${env})`
-          if (e.branch_id) branches[e.branch_id] = family === 'beau' ? env : `${family}/${env}`
-        }
-      }
-    } catch { /* repo not present: the UI falls back to raw IDs */ }
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ agents, branches }))
-  }
-}
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiKey = env.CEKURA_API_KEY
   const target = env.CEKURA_API_URL || 'https://api.cekura.ai'
-  const managedAgentsDir = env.ELEVENLABS_MANAGED_AGENTS_DIR ||
-    path.join(os.homedir(), 'boulevard/ai-receptionist/packages/elevenlabs/agents/_managed')
-  const namesApi = elevenLabsNamesApi(managedAgentsDir)
 
   return {
     plugins: [
       react(),
       {
         name: 'local-views-file',
-        configureServer: (server) => { server.middlewares.use(viewsFileApi); server.middlewares.use(namesApi) },
-        configurePreviewServer: (server) => { server.middlewares.use(viewsFileApi); server.middlewares.use(namesApi) },
+        configureServer: (server) => { server.middlewares.use(viewsFileApi) },
+        configurePreviewServer: (server) => { server.middlewares.use(viewsFileApi) },
       },
     ],
     server: {

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { DEFAULT_VISIBLE, GROUPS, passRate, type Column, type Row } from '../columns'
+import { GROUPS, passRate, type Column, type Row } from '../columns'
 
 function useGrouped(columns: Column[], q: string) {
   return useMemo(() => {
@@ -77,11 +77,12 @@ function useStats(columns: Column[], rows: Row[]) {
 interface PickerProps {
   columns: Column[]
   visible: string[]
+  defaultVisible: string[]
   rows: Row[]
   onChange: (v: string[]) => void
 }
 
-export function ColumnPicker({ columns, visible, rows, onChange }: PickerProps) {
+export function ColumnPicker({ columns, visible, defaultVisible, rows, onChange }: PickerProps) {
   const [q, setQ] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const grouped = useGrouped(columns, q)
@@ -153,12 +154,12 @@ export function ColumnPicker({ columns, visible, rows, onChange }: PickerProps) 
           })}
         </div>
       </div>
-      <ShownList visible={visible} colMap={colMap} onChange={onChange} />
+      <ShownList visible={visible} defaultVisible={defaultVisible} colMap={colMap} onChange={onChange} />
     </div>
   )
 }
 
-function ShownList({ visible, colMap, onChange }: { visible: string[]; colMap: Map<string, Column>; onChange: (v: string[]) => void }) {
+function ShownList({ visible, defaultVisible, colMap, onChange }: { visible: string[]; defaultVisible: string[]; colMap: Map<string, Column>; onChange: (v: string[]) => void }) {
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
 
@@ -173,7 +174,7 @@ function ShownList({ visible, colMap, onChange }: { visible: string[]; colMap: M
       <div className="col-shown-head">
         <span>Shown <span className="col-group-count">{visible.length}</span></span>
         <span className="spacer" />
-        <button className="link" onClick={() => onChange(DEFAULT_VISIBLE)}>Reset</button>
+        <button className="link" onClick={() => onChange(defaultVisible)}>Reset</button>
         <button className="link" onClick={() => onChange([])}>Clear</button>
       </div>
       <div className="muted small col-shown-hint">Drag to reorder — top of the list is the leftmost column.</div>

@@ -4,7 +4,8 @@ import { BRANCH_PENDING, formatCell, isRangeKind, passRate, type Column, type Ro
 import { summarize, type Filter, type SortSpec } from '../filters'
 import { cekuraLink, providerLink, type Settings } from '../settings'
 import type { DisplayItem } from '../grouping'
-import { BinaryBadge } from './Badge'
+import { MetricIcon, StatusDot } from './Badge'
+import { CopyIcon, isPhoneNumber } from './CopyIcon'
 import { FilterEditor } from './FilterEditor'
 import { Popover } from './Popover'
 
@@ -184,23 +185,38 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
       <div className={`td mono ${v == null ? 'muted' : ''}`} data-col={col.key} title={v == null ? row.call.error_message || 'No provider call ID' : String(v)}>
         {row.call.source === 'sim' && <span className="sim-tag" title="Simulation run">SIM</span>}
         {/* Cekura leaves this empty when it couldn't match the run to a provider call; say so instead of a bare dash. */}
-        {v == null ? <span className="ellipsis no-id">⚠ not linked to a provider call</span> : <span className="ellipsis">{v}</span>}
+        {v == null ? <span className="ellipsis no-id">⚠ not linked to a provider call</span> : <><span className="ellipsis">{v}</span><CopyIcon text={String(v)} title="Copy call ID" /></>}
       </div>
     )
   }
-  // Show the raw ID on hover when the cell has a friendly name for it.
   if (col.key === 'provider_agent' || col.key === 'branch') {
-    const id = col.key === 'branch' ? row.call.branchId : row.call.providerAgentId
     return (
-      <div className={`td ${v == null || v === BRANCH_PENDING ? 'muted' : ''}`} data-col={col.key} title={id && id !== v ? `${v}\n${id}` : String(v ?? '')}>
+      <div className={`td ${v == null || v === BRANCH_PENDING ? 'muted' : 'mono'}`} data-col={col.key} title={String(v ?? '')}>
         <span className="ellipsis">{v ?? '—'}</span>
+        {v != null && v !== BRANCH_PENDING && <CopyIcon text={String(v)} title={col.key === 'branch' ? 'Copy branch ID' : 'Copy agent ID'} />}
       </div>
     )
   }
-  if (col.kind === 'binary') {
-    return <div className="td" data-col={col.key}><BinaryBadge value={v} naLabel={col.key === 'success' ? 'pending' : 'N/A'} /></div>
+  if (col.key === 'success') return <div className="td" data-col={col.key}><StatusDot value={v} /></div>
+  if (col.kind === 'binary') return <div className="td" data-col={col.key}><MetricIcon value={v} /></div>
+  if (col.kind === 'enum' && v != null) {
+    // IDs that come in as metric values (business_id) get the same copy affordance as the other IDs.
+    const isId = col.label.toLowerCase().endsWith('_id')
+    return (
+      <div className="td" data-col={col.key} title={String(v)}>
+        <span className={`tag ${isId ? 'mono' : ''}`}>{String(v)}</span>
+        {isId && <CopyIcon text={String(v)} title={`Copy ${col.label}`} />}
+      </div>
+    )
   }
   const text = formatCell(col, v)
+  if (isPhoneNumber(v)) {
+    return (
+      <div className="td phone" data-col={col.key} title={text}>
+        <span className="ellipsis">{text}</span><CopyIcon text={text} title="Copy phone number" />
+      </div>
+    )
+  }
   return (
     <div className={`td ${col.kind === 'number' || col.kind === 'duration' ? 'num' : ''} ${v == null ? 'muted' : ''}`} data-col={col.key} title={text}>
       {v == null ? '—' : text}
@@ -264,9 +280,11 @@ function Summary({ col, s, onFilterFail }: { col: Column; s: NonNullable<ReturnT
     const applicable = (s.pass ?? 0) + (s.fail ?? 0)
     if (applicable === 0) return <div className="th-sum muted">all N/A</div>
     const pct = passRate(s.pass ?? 0, s.fail ?? 0)
+    const color = pct < 80 ? 'var(--fail)' : pct < 95 ? 'var(--warn)' : 'var(--pass)'
     return (
       <div className="th-sum" title={`${s.pass} pass · ${s.fail} fail · ${s.na} N/A`}>
-        <span className={pct < 80 ? 'bad' : pct < 95 ? 'warn' : 'good'}>{pct}%</span>
+        <span>{pct}%</span>
+        <span className="th-bar"><i style={{ width: `${pct}%`, background: color }} /></span>
         {!!s.fail && <button className="fail-count" onClick={(e) => { e.stopPropagation(); onFilterFail() }} title="Show only failures">{s.fail}✗</button>}
       </div>
     )

@@ -4,6 +4,7 @@ import { binaryValue, expectedOutcomeLabel, formatDuration, parseDuration, type 
 import { cekuraLink, providerLink, type Settings } from '../settings'
 import type { CallDetail as Detail, CallMetric, EvaluationMetric } from '../types'
 import { BinaryBadge } from './Badge'
+import { CopyIcon, isPhoneNumber } from './CopyIcon'
 import { JsonView } from './JsonView'
 import { Transcript } from './Transcript'
 
@@ -72,7 +73,7 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext }:
           <BinaryBadge value={row.v.success} naLabel="pending" />
           <span className="pill">{call.status}</span>
           {call.call_ended_reason && <span className="pill">{call.call_ended_reason}</span>}
-          {call.customer_number && <span>{call.customer_number}</span>}
+          {call.customer_number && <span className="phone">{call.customer_number}<CopyIcon text={call.customer_number} title="Copy phone number" /></span>}
         </div>
         {call.sim && (
           <div className="detail-facts">
@@ -296,7 +297,7 @@ function CallData({ detail }: { detail: Detail }) {
       <h3>Facts</h3>
       <div className="kv">
         {facts.filter(([, v]) => v != null && v !== '').map(([k, v]) => (
-          <div key={k} className="kv-row"><span className="kv-k">{k}</span><span className="kv-v mono">{String(v)}</span></div>
+          <div key={k} className="kv-row"><span className="kv-k">{k}</span><span className="kv-v mono phone">{String(v)}{isPhoneNumber(v) && <CopyIcon text={String(v)} title="Copy phone number" />}</span></div>
         ))}
       </div>
       {!!toolCalls?.length && (
