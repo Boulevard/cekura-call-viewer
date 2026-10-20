@@ -42,6 +42,15 @@ Simulation runs are found through their results (test-suite executions) created 
 - **Sidebar:** your saved views, plus checkbox filters with counts for Source, Success, Agent and Ended reason. Use **+ Add filter section** for any other column, × to remove one, and « to collapse the sidebar. Drag its right edge to resize it (double-click to reset). While a call is open it shrinks to a slim rail.
 - **Theme:** ☀ / ☾ in the toolbar switches between light and dark. Until you pick one, it follows your system setting.
 
+### Quick filters
+
+Next to the time range in the toolbar:
+
+- **Business** — search and tick any number of businesses (by the `Info: Business Name` metric); counts follow the other filters, and picked businesses stay at the top of the list.
+- **All / Qualified** — show every call, or only calls where the `Qualified Call` metric passed.
+
+Both set ordinary filters, so they appear as pills in the query bar, in the sidebar and in saved views, and removing the pill clears them. Calls that are still being evaluated don't have these metrics yet, so they drop out while either filter is on.
+
 ### Columns, sorting and filtering
 
 - **Columns:** open **Columns** to show, hide and drag-reorder any field or metric found in the loaded data. Each metric shows its pass rate and failure count for the loaded calls, and there's a one-click button to show every metric with failures. Drag a header's edge to resize.

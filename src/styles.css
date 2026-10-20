@@ -471,8 +471,11 @@ table.mini tr.bad td { color: var(--fail); }
 .branch-progress { white-space: nowrap; }
 
 /* Narrower windows: drop the labels that don't carry information before anything wraps. */
+@media (max-width: 1700px) {
+  .project-org, .project-sep { display: none; }
+}
 @media (max-width: 1500px) {
-  .brand-text, .project-org, .project-sep { display: none; }
+  .brand-text { display: none; }
 }
 
 .copy-icon { background: none; border: 0; padding: 0 3px; margin-left: 4px; color: var(--muted-2); font-size: 12px; line-height: 1; border-radius: 4px; flex-shrink: 0; opacity: 0.55; }
@@ -519,3 +522,20 @@ table.mini tr.bad td { color: var(--fail); }
 .query-issue { color: var(--warn); font-size: 12px; padding: 5px 8px; }
 .query-help { display: flex; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid var(--border); margin-top: 4px; padding: 7px 8px 3px; font-size: 11px; color: var(--muted); }
 .query-help b { font-family: ui-monospace, Menlo, monospace; font-weight: 500; color: var(--text-2); }
+
+/* toolbar quick filters */
+.toolbar-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; }
+.quick-btn { max-width: 230px; min-width: 0; }
+.quick-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.quick-seg button { padding: 6px 11px; }
+.popover.quick-popover { width: 340px; padding: 8px; }
+.quick-search { width: 100%; margin-bottom: 6px; padding: 7px 10px; }
+.quick-list { max-height: 360px; overflow: auto; }
+.quick-item { display: flex; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.quick-item:hover { background: var(--surface-2); }
+.quick-item.on { background: var(--accent-soft); }
+.quick-item input { flex-shrink: 0; margin: 0; }
+.quick-item .ellipsis { flex: 1; }
+.quick-count { flex-shrink: 0; color: var(--muted-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.quick-empty { padding: 10px 6px; }
+.quick-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 6px; padding: 7px 4px 2px; }
