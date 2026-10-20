@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, fetchCallBranches, listCalls, listProjects, listProviderAgents, listSims, type Project } from './api'
-import { buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
+import { buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
 import { load as loadStored, save, usePersistentState } from './storage'
@@ -15,6 +15,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
+import { BusinessFilter, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
@@ -255,28 +256,24 @@ export default function App() {
   }, [needsBranch, meta, settings])
   const colMap = useMemo(() => new Map(model.columns.map((c) => [c.key, c])), [model.columns])
 
-  // One-time: the provider agent and branch columns joined the default view after views were already being persisted.
+  // One-time: agent, provider agent, branch and ended reason left the default view after views were
+  // already being persisted. Applied to the current view the same way earlier additions were.
   useEffect(() => {
-    if (loadStored('migratedProviderColumns', false)) return
-    save('migratedProviderColumns', true)
-    setView((v) => {
-      const missing = ['provider_agent', 'branch'].filter((k) => !v.visible.includes(k))
-      if (missing.length === 0) return v
-      const next = [...v.visible]
-      const at = next.indexOf('agent_name')
-      next.splice(at >= 0 ? at + 1 : next.length, 0, ...missing)
-      return { ...v, visible: next }
-    })
+    if (loadStored('migratedSlimDefaultColumns', false)) return
+    save('migratedSlimDefaultColumns', true)
+    const dropped = ['agent_name', 'provider_agent', 'branch', 'call_ended_reason']
+    setView((v) => (v.visible.some((k) => dropped.includes(k)) ? { ...v, visible: v.visible.filter((k) => !dropped.includes(k)) } : v))
   }, [setView])
 
-  // One-time: business and location columns joined the default view after views were already
-  // being persisted. Applied once the loaded data actually has those metrics.
+  // Default metric columns were added after views were already being persisted, so each one is
+  // added to the current view once, the first time the loaded data has that metric.
   useEffect(() => {
-    if (loadStored('migratedBusinessColumns', false)) return
-    const has = model.columns.some((c) => c.metricId != null && DEFAULT_METRIC_NAMES.some((n) => n.toLowerCase() === c.label.toLowerCase()))
-    if (!has) return
-    save('migratedBusinessColumns', true)
-    setView((v) => ({ ...v, visible: withDefaultMetrics(v.visible, model.columns) }))
+    const applied = loadStored<string[]>('appliedDefaultMetrics',
+      loadStored('migratedBusinessColumns', false) ? ['Info: Business Name', 'location name', 'business_id'] : [])
+    const pending = DEFAULT_METRIC_NAMES.filter((n) => !applied.includes(n) && findMetricKey(model.columns, n))
+    if (pending.length === 0) return
+    save('appliedDefaultMetrics', [...applied, ...pending])
+    setView((v) => ({ ...v, visible: withDefaultMetrics(v.visible, model.columns, pending) }))
   }, [model.columns, setView])
   const visibleCols = useMemo(() => view.visible.map((k) => colMap.get(k)).filter((c): c is Column => !!c), [view.visible, colMap])
   const filtered = useMemo(() => applyFilters(model.rows, view.filters, search), [model.rows, view.filters, search])
@@ -502,6 +499,9 @@ export default function App() {
         )}
         <button className="btn primary icon" onClick={() => load()} disabled={!!progress} title="Reload">{progress ? '…' : '↻'}</button>
         {progress && <button className="btn ghost" onClick={() => { abortRef.current?.abort(); setProgress(null) }}>Cancel</button>}
+        <span className="toolbar-sep" />
+        <BusinessFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
+        <QualifiedFilter columns={model.columns} filters={view.filters} onSetFilter={setFilter} />
         <span className="spacer" />
         <div className="popover-anchor">
           <button className="btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>

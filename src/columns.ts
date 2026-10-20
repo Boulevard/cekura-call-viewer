@@ -61,24 +61,37 @@ const BASE_COLUMNS: Column[] = [
 /** Added together by the "show simulation columns" shortcut. */
 export const SIM_COLUMNS = ['result_name', 'scenario_name', 'expected_outcome']
 
-export const DEFAULT_VISIBLE = ['call_id', 'links', 'timestamp', 'agent_name', 'provider_agent', 'branch', 'duration', 'success', 'call_ended_reason']
+export const DEFAULT_VISIBLE = ['call_id', 'links', 'timestamp', 'duration', 'success']
 
 /**
  * Metric columns that belong in the default view. Metric keys are Cekura metric IDs, which differ
  * per project, so these are matched by metric name once the data is loaded.
  */
-export const DEFAULT_METRIC_NAMES = ['Info: Business Name', 'location name', 'business_id']
+export const DEFAULT_METRICS: { names: string[]; after: string[] }[] = [
+  { names: ['Info: Business Name', 'location name', 'business_id'], after: ['branch', 'provider_agent', 'agent_name', 'timestamp'] },
+  { names: ['Technically adherent (LLM judge)'], after: ['success'] },
+]
+export const DEFAULT_METRIC_NAMES = DEFAULT_METRICS.flatMap((g) => g.names)
 
-/** Adds the default metric columns (after Agent and its provider columns) to a column list, if the data has them. */
-export function withDefaultMetrics(visible: string[], columns: Column[]): string[] {
-  const keys = DEFAULT_METRIC_NAMES
-    .map((name) => columns.find((c) => c.metricId != null && c.label.toLowerCase() === name.toLowerCase())?.key)
-    .filter((k): k is string => !!k && !visible.includes(k))
-  if (keys.length === 0) return visible
-  const anchor = ['branch', 'provider_agent', 'agent_name'].find((k) => visible.includes(k))
-  const at = anchor ? visible.indexOf(anchor) : -1
-  const next = [...visible]
-  next.splice(at >= 0 ? at + 1 : next.length, 0, ...keys)
+export const findMetricKey = (columns: Column[], name: string) =>
+  columns.find((c) => c.metricId != null && c.label.toLowerCase() === name.toLowerCase())?.key
+
+/**
+ * Adds default metric columns to a column list, each group right after the first of its anchor
+ * columns that's shown (or at the end), skipping metrics the data doesn't have.
+ */
+export function withDefaultMetrics(visible: string[], columns: Column[], only: string[] = DEFAULT_METRIC_NAMES): string[] {
+  let next = [...visible]
+  for (const group of DEFAULT_METRICS) {
+    const keys = group.names
+      .filter((n) => only.includes(n))
+      .map((n) => findMetricKey(columns, n))
+      .filter((k): k is string => !!k && !next.includes(k))
+    if (keys.length === 0) continue
+    const anchor = group.after.find((k) => next.includes(k))
+    const at = anchor ? next.indexOf(anchor) + 1 : next.length
+    next = [...next.slice(0, at), ...keys, ...next.slice(at)]
+  }
   return next
 }
 
