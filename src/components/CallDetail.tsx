@@ -9,7 +9,13 @@ import { CopyIcon, isPhoneNumber } from './CopyIcon'
 import { JsonView } from './JsonView'
 import { Transcript } from './Transcript'
 
+export type DetailPane = 'metrics' | 'main'
+
 interface Props {
+  /** The pane the keyboard scrolls; outlined so it's clear which one ↑/↓ move. */
+  activePane: DetailPane | null
+  onActivatePane: (pane: DetailPane) => void
+  paneRef: (pane: DetailPane, el: HTMLElement | null) => void
   row: Row
   settings: Settings
   position: string
@@ -18,7 +24,7 @@ interface Props {
   onNext: () => void
 }
 
-export function CallDetail({ row, settings, position, onClose, onPrev, onNext }: Props) {
+export function CallDetail({ row, settings, position, onClose, onPrev, onNext, activePane, onActivatePane, paneRef }: Props) {
   const call = row.call
   const [detail, setDetail] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -106,7 +112,8 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext }:
       </header>
 
       <div className="detail-body">
-        <section className="detail-metrics">
+        <section className={`detail-metrics ${activePane === 'metrics' ? 'active-pane' : ''}`}
+          ref={(el) => paneRef('metrics', el)} onMouseDown={() => onActivatePane('metrics')}>
           {call.sim && detail && <ExpectedOutcome detail={detail} />}
           <MetricsPanel metrics={call.metrics} evaluation={detail?.evaluation?.metrics} />
           {!!detail?.rubric?.length && (
@@ -124,13 +131,13 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext }:
             </div>
           )}
         </section>
-        <section className="detail-main">
+        <section className={`detail-main ${activePane === 'main' ? 'active-pane' : ''}`} onMouseDown={() => onActivatePane('main')}>
           <div className="tabs">
             <button className={tab === 'transcript' ? 'on' : ''} onClick={() => setTab('transcript')}>Transcript</button>
             <button className={tab === 'data' ? 'on' : ''} onClick={() => setTab('data')}>{call.sim ? 'Scenario & data' : 'Call data'}</button>
             <button className={tab === 'raw' ? 'on' : ''} onClick={() => setTab('raw')}>Raw JSON</button>
           </div>
-          <div className="tab-body">
+          <div className="tab-body" ref={(el) => paneRef('main', el)}>
             {error && <div className="error">Failed to load call: {error}</div>}
             {!detail && !error && <div className="muted">Loading call…</div>}
             {detail && tab === 'transcript' && <Transcript detail={detail} currentTime={time} onSeek={seek} />}
