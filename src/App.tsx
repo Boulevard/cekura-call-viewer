@@ -15,7 +15,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
-import { BusinessFilter, QualifiedFilter } from './components/QuickFilters'
+import { BusinessFilter, QualifiedFilter, ResultIdsFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
@@ -163,7 +163,16 @@ export default function App() {
     history.replaceState(null, '', location.pathname + location.hash)
   }, [shared, setView, setQuery, setActiveViewId])
 
-  const load = useCallback(async (q: Query = query) => {
+  // Results named in a result_id filter are fetched even outside the time range (or with
+  // Simulations off), so a pasted list of IDs always shows those results.
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const pinnedResultIds = (filters: Filter[]) => {
+    const f = filters.find((x) => x.col === 'result_id')
+    return f?.type === 'set' && !f.exclude ? f.values.map(Number).filter(Number.isFinite) : []
+  }
+
+  const load = useCallback(async (q: Query = query, extraResultIds?: number[]) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -181,6 +190,7 @@ export default function App() {
     }
     setProgress({ loaded: 0, total: 0 })
     const source = q.source ?? 'calls'
+    const pinned = extraResultIds ?? pinnedResultIds(viewRef.current.filters)
     const listQuery = { projectId: q.projectId, agentId: q.agentId ? Number(q.agentId) : undefined, ...range }
     // Calls and simulations load in parallel; the progress bar shows their combined count.
     const parts = { calls: { loaded: 0, total: 0 }, sims: { loaded: 0, total: 0 } }
@@ -191,7 +201,7 @@ export default function App() {
     try {
       const [callRes, simRes, providerAgents] = await Promise.all([
         source !== 'sims' ? listCalls(settings, listQuery, report('calls'), ctrl.signal) : null,
-        source !== 'calls' ? listSims(settings, listQuery, report('sims'), ctrl.signal) : null,
+        source !== 'calls' || pinned.length ? listSims(settings, listQuery, report('sims'), ctrl.signal, pinned, source === 'calls') : null,
         // Only used to label rows; a failure here shouldn't block the list.
         listProviderAgents(settings, q.projectId).catch(() => new Map<number, string>()),
       ])
@@ -233,6 +243,7 @@ export default function App() {
   }, [shared])
 
   const model = useMemo(() => buildModel(calls), [calls])
+  const loadedResultIds = useMemo(() => new Set(calls.flatMap((c) => (c.sim ? [c.sim.resultId] : []))), [calls])
 
   // Branches for production ElevenLabs calls are expensive to fetch, so only do it while the
   // branch column is on screen or being filtered/sorted on.
@@ -502,6 +513,20 @@ export default function App() {
         <span className="toolbar-sep" />
         <BusinessFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
         <QualifiedFilter columns={model.columns} filters={view.filters} onSetFilter={setFilter} />
+        <ResultIdsFilter filters={view.filters} loadedResultIds={loadedResultIds} loading={!!progress}
+          onApply={(ids) => {
+            if (ids.length === 0) {
+              setFilter('result_id', null)
+              // With Simulations off, the runs were only loaded for these IDs, so they go too.
+              if ((query.source ?? 'calls') === 'calls') {
+                setCalls((prev) => prev.filter((c) => c.source !== 'sim'))
+                setMeta((m) => m && { ...m, sims: undefined, results: undefined })
+              }
+              return
+            }
+            setFilter('result_id', { col: 'result_id', type: 'set', values: ids.map(String) })
+            if (ids.some((id) => !loadedResultIds.has(id))) load(query, ids)
+          }} />
         <span className="spacer" />
         <div className="popover-anchor">
           <button className="btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>
@@ -535,7 +560,9 @@ export default function App() {
             </Popover>
           )}
         </div>
-        <button className="btn" onClick={() => downloadCsv(sorted, visibleCols, settings)} disabled={!sorted.length}>Export</button>
+        <button className="btn" onClick={() => downloadCsv(sorted, visibleCols, settings)} disabled={!sorted.length} title="Export the filtered rows as CSV">
+          <span>⤓</span><span className="export-text">Export</span>
+        </button>
         <button className="btn ghost icon" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? '☀' : '☾'}</button>
         <button className="btn ghost icon" onClick={() => setShowShortcuts(true)} title="Keyboard shortcuts (?)">?</button>
         <button className="btn ghost icon" onClick={() => setShowSettings(true)} title="Settings">⚙</button>

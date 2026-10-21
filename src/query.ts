@@ -288,6 +288,12 @@ function termToFilter(term: Term, col: Column, ctx: QueryContext): Filter | stri
       if (term.op === '>' || term.op === '>=') return { col: col.key, type: 'range', min: n, minExcl: term.op === '>' }
       return { col: col.key, type: 'range', max: n, maxExcl: term.op === '<' }
     }
+    if (term.kind === 'list' && col.kind === 'number') {
+      if (term.open) return 'list is missing its closing )'
+      const nums = vals.map((v) => Number(v.text))
+      if (nums.some((n) => !Number.isFinite(n))) return 'expects numbers'
+      return { col: col.key, type: 'set', values: nums.map(String), exclude: term.neg }
+    }
     return 'use >, <, or [min TO max] for this field'
   }
 
