@@ -196,13 +196,17 @@ export async function listSims(
   q: ListQuery,
   onProgress: (loaded: number, total: number) => void,
   signal?: AbortSignal,
+  /** Results to include even when they fall outside the time window (e.g. a pasted list of IDs). */
+  extraResultIds: number[] = [],
+  /** Skip the time window and load only `extraResultIds` (Simulations is off, but IDs were pasted). */
+  onlyExtra = false,
 ): Promise<{ calls: CallLog[]; total: number; truncated: boolean; results: number }> {
   const from = Date.parse(q.from)
   const to = Date.parse(q.to)
 
   // Results come newest first; stop paging once a page reaches past the start of the window.
   const results: ResultRow[] = []
-  for (let page = 1; ; page++) {
+  for (let page = 1; !onlyExtra; page++) {
     const res = await get<Page<ResultRow>>(settings, '/test_framework/v1/results/', {
       project_id: q.projectId, agent_id: q.agentId, page, page_size: PAGE_SIZE, ql: RESULT_FIELDS,
     }, signal)
@@ -212,6 +216,14 @@ export async function listSims(
     }
     const last = res.results.at(-1)
     if (!res.next || !last || Date.parse(last.created_at) < from) break
+  }
+
+  const missing = extraResultIds.filter((id) => !results.some((r) => r.id === id))
+  for (let i = 0; i < missing.length; i += PAGE_SIZE) {
+    const res = await get<Page<ResultRow>>(settings, '/test_framework/v1/results/', {
+      project_id: q.projectId, id__in: missing.slice(i, i + PAGE_SIZE).join(','), page_size: PAGE_SIZE, ql: RESULT_FIELDS,
+    }, signal)
+    results.push(...res.results)
   }
 
   const total = results.reduce((a, r) => a + r.total_runs_count, 0)

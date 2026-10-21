@@ -48,8 +48,9 @@ Next to the time range in the toolbar:
 
 - **Business** — search and tick any number of businesses (by the `Info: Business Name` metric); counts follow the other filters, and picked businesses stay at the top of the list.
 - **All / Qualified** — show every call, or only calls where the `Qualified Call` metric passed.
+- **Results** — paste a list of simulation result IDs (one per line, or separated by commas, spaces or tabs) to show only those results. Results outside the loaded time range, or with Simulations off, are fetched by ID and stay loaded while the filter is on; IDs that don't exist in the project are listed as not found. It sets a `result_id:(… OR …)` filter.
 
-Both set ordinary filters, so they appear as pills in the query bar, in the sidebar and in saved views, and removing the pill clears them. Calls that are still being evaluated don't have these metrics yet, so they drop out while either filter is on.
+These set ordinary filters, so they appear as pills in the query bar, in the sidebar and in saved views, and removing the pill clears them. Calls that are still being evaluated don't have these metrics yet, so they drop out while either filter is on.
 
 ### Columns, sorting and filtering
 

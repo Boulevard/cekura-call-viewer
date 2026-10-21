@@ -91,3 +91,51 @@ export function QualifiedFilter({ columns, filters, onSetFilter }: Omit<Business
     </div>
   )
 }
+
+/** Any run of digits is an ID, so lists pasted from a sheet, Slack or a CSV column all work. */
+export const parseIds = (text: string) => [...new Set((text.match(/\d+/g) ?? []).map(Number))]
+
+interface ResultIdsProps {
+  filters: Filter[]
+  /** Result IDs present in the loaded data, to point out pasted IDs that don't exist. */
+  loadedResultIds: Set<number>
+  loading: boolean
+  onApply: (ids: number[]) => void
+}
+
+export function ResultIdsFilter({ filters, loadedResultIds, loading, onApply }: ResultIdsProps) {
+  const filter = filters.find((f) => f.col === 'result_id')
+  const active = filter?.type === 'set' && !filter.exclude ? filter.values.filter((v): v is string => v != null).map(Number) : []
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const ids = parseIds(text)
+  const notFound = loading ? [] : active.filter((id) => !loadedResultIds.has(id))
+
+  const label = active.length === 0 ? 'Results' : active.length === 1 ? `Result ${active[0]}` : `${active.length} results`
+  return (
+    <div className="popover-anchor">
+      <button className={`btn quick-btn ${active.length ? 'active' : ''}`} title="Show only specific simulation results"
+        onClick={() => { setText(active.join('\n')); setOpen(true) }}>
+        <span className="ellipsis">{label}</span>
+        {notFound.length > 0 && <span className="view-dot" title={`${notFound.length} not found`} />}
+        <span className="muted">▾</span>
+      </button>
+      {open && (
+        <Popover onClose={() => setOpen(false)} className="quick-popover">
+          <textarea autoFocus className="ids-input" rows={8} value={text} onChange={(e) => setText(e.target.value)}
+            placeholder={'Paste result IDs: one per line, or separated by commas or spaces'}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { onApply(ids); setOpen(false) } }} />
+          {notFound.length > 0 && (
+            <div className="ids-missing">Not found in this project: {notFound.join(', ')}</div>
+          )}
+          <div className="quick-footer">
+            <span className="muted small">{ids.length ? `${ids.length} ID${ids.length > 1 ? 's' : ''}` : 'No IDs yet'} · ⌘↵ to apply</span>
+            <span className="spacer" />
+            {active.length > 0 && <button className="link" onClick={() => { onApply([]); setOpen(false) }}>Clear</button>}
+            <button className="btn primary" disabled={!ids.length} onClick={() => { onApply(ids); setOpen(false) }}>Show these results</button>
+          </div>
+        </Popover>
+      )}
+    </div>
+  )
+}
