@@ -112,6 +112,8 @@ The caller's phone number isn't in the logs, so it can't be used. Neither link f
 | `gg` / `G` | Jump to the first / last row |
 | `Enter` | Open the highlighted call, or fold/unfold a result row |
 | `Space` | Same as Enter; on a run inside an open result, collapses that result |
+| `←` / `→` (or `h` / `l`) | With a call open: make the metrics or transcript pane active (outlined). `Tab` toggles between them; clicking a pane also activates it. |
+| `↑` / `↓` | With a pane active: scroll it (`Shift` or `Page Up`/`Page Down` for a page). With no pane active: step to the previous/next call. |
 | `Esc` | Close the detail panel or the open menu |
 | `/` | Focus search |
 | `?` | Show all shortcuts |

@@ -8,7 +8,7 @@ import type { CallLog } from './types'
 import { downloadCsv } from './csv'
 import { buildDisplay, groupKey } from './grouping'
 import { CallTable, ROW_HEIGHT } from './components/CallTable'
-import { CallDetail } from './components/CallDetail'
+import { CallDetail, type DetailPane } from './components/CallDetail'
 import { ColumnPicker } from './components/ColumnPicker'
 import { Popover } from './components/Popover'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -379,6 +379,12 @@ export default function App() {
     setCursorId(display[i].key)
   }, [display, selectedId, cursorId, select])
 
+  // Which detail pane (metrics or transcript/data) the arrow keys scroll; none means they step calls.
+  const [detailPane, setDetailPane] = useState<DetailPane | null>(null)
+  const paneEls = useRef<Record<DetailPane, HTMLElement | null>>({ metrics: null, main: null })
+  const paneRef = useCallback((pane: DetailPane, el: HTMLElement | null) => { paneEls.current[pane] = el }, [])
+  useEffect(() => { if (selectedId == null) setDetailPane(null) }, [selectedId])
+
   // vim-style "gg": the first g only arms the jump, which a second g within half a second completes.
   const pendingG = useRef(0)
   useEffect(() => {
@@ -401,6 +407,22 @@ export default function App() {
       else if (e.key === 'G') step(Infinity)
       else if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
       else if (e.key === '?') setShowShortcuts(true)
+      // Detail panes: ←/→ (or h/l, Tab) pick one, then ↑/↓ scroll it instead of stepping calls.
+      else if (selectedId != null && !t.closest('audio') && (e.key === 'ArrowLeft' || e.key === 'h')) { e.preventDefault(); setDetailPane('metrics') }
+      else if (selectedId != null && !t.closest('audio') && (e.key === 'ArrowRight' || e.key === 'l')) { e.preventDefault(); setDetailPane('main') }
+      else if (selectedId != null && e.key === 'Tab' && !t.closest('button, a, audio')) {
+        e.preventDefault()
+        setDetailPane((p) => (p === 'metrics' ? 'main' : 'metrics'))
+      }
+      else if (selectedId != null && detailPane && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.key)) {
+        const el = paneEls.current[detailPane]
+        if (el) {
+          e.preventDefault()
+          const page = e.shiftKey || e.key.startsWith('Page')
+          const dir = e.key === 'ArrowUp' || e.key === 'PageUp' ? -1 : 1
+          el.scrollBy({ top: dir * (page ? el.clientHeight * 0.85 : 80), behavior: page ? 'smooth' : 'auto' })
+        }
+      }
       else if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); step(1) }
       else if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); step(-1) }
       else if ((e.key === 'Enter' || e.key === ' ') && !t.closest('button, a, audio')) {
@@ -418,7 +440,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedId, cursorId, display, step, select, toggleGroup])
+  }, [selectedId, cursorId, display, step, select, toggleGroup, detailPane])
 
   const activeView = savedViews.find((v) => v.id === activeViewId) ?? null
   const viewModified = !!activeView && isModified(activeView, view, query)
@@ -640,7 +662,8 @@ export default function App() {
         {selectedRow && (
           <CallDetail key={selectedRow.call.uid} row={selectedRow} settings={settings}
             position={selectedIndex >= 0 ? `${selectedIndex + 1} / ${sorted.length}` : 'not in filtered list'}
-            onClose={() => select(null)} onPrev={() => step(-1)} onNext={() => step(1)} />
+            onClose={() => select(null)} onPrev={() => step(-1)} onNext={() => step(1)}
+            activePane={detailPane} onActivatePane={setDetailPane} paneRef={paneRef} />
         )}
       </div>
 

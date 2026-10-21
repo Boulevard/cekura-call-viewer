@@ -545,3 +545,7 @@ table.mini tr.bad td { color: var(--fail); }
 
 .ids-input { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 8px 10px; min-height: 140px; }
 .ids-missing { color: var(--warn); font-size: 12px; padding: 6px 2px 0; }
+
+/* the detail pane the keyboard scrolls */
+.detail-metrics, .detail-main { outline: 2px solid transparent; outline-offset: -2px; transition: outline-color 0.12s; }
+.detail-metrics.active-pane, .detail-main.active-pane { outline-color: var(--accent); }
