@@ -169,13 +169,13 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
       call_ended_reason: call.call_ended_reason || null,
       customer_number: call.customer_number || null,
       call_id: call.call_id || null,
-      id: call.id,
+      id: call.source === 'el' ? null : call.id,
       is_reviewed: call.is_reviewed ? 'yes' : 'no',
       feedback: call.feedback || null,
       topic: call.topic || null,
       dropoff_point: call.dropoff_point || null,
       error_message: call.error_message || null,
-      source: call.source === 'sim' ? 'Simulation' : 'Call',
+      source: call.source === 'sim' ? 'Simulation' : call.source === 'el' ? '11Labs only' : 'Call',
       provider_agent: call.providerAgentId ?? null,
       branch: call.branchId === undefined && call.call_id?.startsWith('conv_') ? BRANCH_PENDING : call.branchId ?? null,
       result_name: call.sim?.resultName ?? null,
@@ -188,7 +188,7 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
       test_profile: call.sim?.testProfile ?? null,
       run_type: call.sim?.runType ?? null,
     }
-    const searchParts = [call.call_id, call.customer_number, String(call.id), call.agent_name, call.feedback,
+    const searchParts = [call.call_id, call.customer_number, call.source !== 'el' && String(call.id), call.agent_name, call.feedback,
       String(call.agent), call.sim && String(call.sim.resultId), call.sim && String(call.sim.scenarioId), call.sim?.resultName, call.sim?.scenarioName,
       call.providerAgentId, call.branchId]
 

@@ -20,8 +20,10 @@ function fromCekura(d: CallDetail): Item[] {
       items.push(t)
     } else if (e.role === 'Function Call Result') {
       const t = e.data?.id ? tools.get(e.data.id) : undefined
-      if (t) t.result = e.data?.result
-      else items.push({ kind: 'tool', name: e.data?.name ?? 'tool result', result: e.data?.result, start: e.start_time })
+      if (t) {
+        t.result = e.data?.result
+        if (e.data?.is_error != null) t.ok = !e.data.is_error
+      } else items.push({ kind: 'tool', name: e.data?.name ?? 'tool result', result: e.data?.result, start: e.start_time })
     }
   }
   return items

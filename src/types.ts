@@ -20,7 +20,8 @@ export interface EvaluationMetric extends CallMetric {
   thumbs_up?: boolean | null
 }
 
-export type Source = 'call' | 'sim'
+/** `el`: an ElevenLabs conversation Cekura doesn't have (no Cekura ID, metrics or links). */
+export type Source = 'call' | 'sim' | 'el'
 
 /** Simulation-only fields; production call logs leave this undefined. */
 export interface SimInfo {
@@ -72,7 +73,7 @@ export interface CallLog {
 export interface TranscriptEntry {
   role: string
   content?: string | null
-  data?: { id?: string; name?: string; arguments?: string; result?: string }
+  data?: { id?: string; name?: string; arguments?: string; result?: string; is_error?: boolean }
   start_time?: number
   end_time?: number
   time?: string

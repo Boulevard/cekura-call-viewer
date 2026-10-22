@@ -45,7 +45,8 @@ export function providerLink(settings: Settings, callId: string): { label: strin
 }
 
 /** Calls open directly; simulation runs open their parent result, which lists the run. */
-export function cekuraLink(c: CallLog) {
+export function cekuraLink(c: CallLog): string | null {
+  if (c.source === 'el') return null
   return c.sim
     ? `https://dashboard.cekura.ai/${c.project}/results/${c.sim.resultId}`
     : `https://dashboard.cekura.ai/${c.project}/calls?callId=${c.id}`

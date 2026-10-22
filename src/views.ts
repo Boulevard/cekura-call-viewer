@@ -1,7 +1,8 @@
 import type { ViewState } from './filters'
 import { load } from './storage'
 
-export type DataSource = 'calls' | 'sims' | 'both'
+/** Which Cekura data loads; 'none' only when 11Labs is on, to show just conversations Cekura doesn't have. */
+export type DataSource = 'calls' | 'sims' | 'both' | 'none'
 
 export interface ViewQuery {
   projectId: number
@@ -11,6 +12,8 @@ export interface ViewQuery {
   agentId: string
   /** Missing on queries saved before simulations were supported; treated as 'calls'. */
   source?: DataSource
+  /** Also load ElevenLabs conversations Cekura doesn't have. */
+  elevenLabs?: boolean
 }
 
 export interface SavedView {
@@ -42,7 +45,7 @@ export function isModified(saved: SavedView, view: ViewState, query: ViewQuery):
   if (!saved.query) return false
   const q = saved.query
   return q.projectId !== query.projectId || q.agentId !== query.agentId || q.range !== query.range ||
-    (q.source ?? 'calls') !== (query.source ?? 'calls') ||
+    (q.source ?? 'calls') !== (query.source ?? 'calls') || !!q.elevenLabs !== !!query.elevenLabs ||
     (q.range === 'custom' && (q.from !== query.from || q.to !== query.to))
 }
 
@@ -50,7 +53,11 @@ export function describeView(v: SavedView): string {
   const parts = [`${v.view.visible.length} columns`]
   if (v.view.filters.length) parts.push(`${v.view.filters.length} filter${v.view.filters.length > 1 ? 's' : ''}`)
   if (v.query) parts.push(v.query.range === 'custom' ? 'custom range' : `last ${v.query.range}`)
-  if (v.query?.source && v.query.source !== 'calls') parts.push(v.query.source === 'sims' ? 'simulations' : 'calls + simulations')
+  if (v.query?.source === 'none') parts.push('11Labs only')
+  else {
+    if (v.query?.source && v.query.source !== 'calls') parts.push(v.query.source === 'sims' ? 'simulations' : 'calls + simulations')
+    if (v.query?.elevenLabs) parts.push('+ 11Labs')
+  }
   return parts.join(' · ')
 }
 

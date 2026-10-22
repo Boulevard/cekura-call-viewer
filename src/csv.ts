@@ -8,7 +8,7 @@ export function downloadCsv(rows: Row[], columns: Column[], settings: Settings) 
   const header = [...cols.map((c) => c.label), 'Cekura URL', 'Provider URL']
   const lines = rows.map((r) => [
     ...cols.map((c) => (c.kind === 'date' && r.v[c.key] != null ? new Date(r.v[c.key] as number).toISOString() : formatCell(c, r.v[c.key]))),
-    cekuraLink(r.call),
+    cekuraLink(r.call) ?? '',
     providerLink(settings, r.call.call_id)?.url ?? '',
   ])
   const csv = [header, ...lines].map((l) => l.map(esc).join(',')).join('\n')

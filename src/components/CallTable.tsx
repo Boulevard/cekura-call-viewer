@@ -134,7 +134,7 @@ function GroupRow({ item, columns, template, cursor, top, onToggle }: {
           <span className={passed === rows.length ? 'good' : 'bad'}> · {passed}/{rows.length} passed</span>
           {outcomes.length > 0 && <span className={met === outcomes.length ? 'good' : 'warn'}> · {met}/{outcomes.length} met</span>}
         </span>
-        <a href={cekuraLink(first)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Open the result in Cekura">Cekura↗</a>
+        <a href={cekuraLink(first) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Open the result in Cekura">Cekura↗</a>
       </div>
       {columns.slice(span).map((c) => <GroupCell key={c.key} col={c} rows={rows} />)}
     </div>
@@ -172,9 +172,10 @@ function GroupCell({ col, rows }: { col: Column; rows: Row[] }) {
 function Cell({ col, row, settings }: { col: Column; row: Row; settings: Settings }) {
   if (col.kind === 'links') {
     const prov = providerLink(settings, row.call.call_id)
+    const cekura = cekuraLink(row.call)
     return (
       <div className="td links" data-col={col.key} onClick={(e) => e.stopPropagation()}>
-        <a href={cekuraLink(row.call)} target="_blank" rel="noreferrer" title={row.call.sim ? 'Open the simulation result in Cekura' : 'Open the call in Cekura'}>Cekura↗</a>
+        {cekura && <a href={cekura} target="_blank" rel="noreferrer" title={row.call.sim ? 'Open the simulation result in Cekura' : 'Open the call in Cekura'}>Cekura↗</a>}
         {prov && <a href={prov.url} target="_blank" rel="noreferrer">{prov.label}↗</a>}
       </div>
     )
@@ -184,6 +185,7 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
     return (
       <div className={`td mono ${v == null ? 'muted' : ''}`} data-col={col.key} title={v == null ? row.call.error_message || 'No provider call ID' : String(v)}>
         {row.call.source === 'sim' && <span className="sim-tag" title="Simulation run">SIM</span>}
+        {row.call.source === 'el' && <span className="sim-tag el-tag" title="In ElevenLabs but not in Cekura">11L</span>}
         {/* Cekura leaves this empty when it couldn't match the run to a provider call; say so instead of a bare dash. */}
         {v == null ? <span className="ellipsis no-id">⚠ not linked to a provider call</span> : <><span className="ellipsis">{v}</span><CopyIcon text={String(v)} title="Copy call ID" /></>}
       </div>

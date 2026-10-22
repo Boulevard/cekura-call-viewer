@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, fetchCallBranches, listCalls, listProjects, listProviderAgents, listSims, type Project } from './api'
+import { ApiError, fetchCallBranches, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
+import { conversationToCallLog, listConversations } from './elevenlabs'
 import { buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
@@ -40,22 +41,29 @@ const DEFAULT_PROJECT_ID = Number(import.meta.env.VITE_CEKURA_PROJECT_ID) || 320
 const DEFAULT_QUERY: Query = { projectId: DEFAULT_PROJECT_ID, range: '24h', from: '', to: '', agentId: '', source: 'calls' }
 
 const SOURCE_TOGGLES = [
-  { key: 'calls', label: 'Calls' },
-  { key: 'sims', label: 'Simulations' },
+  { key: 'calls', label: 'Calls', hint: 'calls' },
+  { key: 'sims', label: 'Simulations', hint: 'simulations' },
+  { key: 'el', label: '11Labs', hint: "ElevenLabs conversations that Cekura doesn't have" },
 ] as const
 
 function sourceIncludes(source: DataSource, key: 'calls' | 'sims') {
   return source === 'both' || source === key
 }
 
-/** Flips one toggle; turning off the only active source is ignored so something is always loaded. */
-function toggleSource(source: DataSource, key: 'calls' | 'sims'): DataSource {
-  const calls = key === 'calls' ? !sourceIncludes(source, 'calls') : sourceIncludes(source, 'calls')
-  const sims = key === 'sims' ? !sourceIncludes(source, 'sims') : sourceIncludes(source, 'sims')
-  if (calls && sims) return 'both'
-  if (calls) return 'calls'
-  if (sims) return 'sims'
-  return source
+/**
+ * Flips one of the three source toggles. Turning off the only active one is ignored so something
+ * is always loaded; with Calls and Simulations both off, only 11Labs-only conversations load.
+ */
+function toggleSource(q: Query, key: 'calls' | 'sims' | 'el'): Query {
+  const source = q.source ?? 'calls'
+  let calls = sourceIncludes(source, 'calls')
+  let sims = sourceIncludes(source, 'sims')
+  let el = !!q.elevenLabs
+  if (key === 'calls') calls = !calls
+  else if (key === 'sims') sims = !sims
+  else el = !el
+  if (!calls && !sims && !el) return q
+  return { ...q, source: calls && sims ? 'both' : calls ? 'calls' : sims ? 'sims' : 'none', elevenLabs: el }
 }
 const DEFAULT_VIEW: ViewState = { visible: DEFAULT_VISIBLE, filters: [], sort: [{ col: 'timestamp', dir: 'desc' }], widths: {} }
 
@@ -68,10 +76,10 @@ function resolveRange(q: Query): { from: string; to: string } {
   return { from: new Date(q.from).toISOString(), to: new Date(q.to).toISOString() }
 }
 
-/** `#call=<id>` or `#run=<id>`, returned as the row uid (`call:<id>` / `run:<id>`). */
+/** `#call=<id>`, `#run=<id>` or `#el=<conversation id>`, returned as the row uid (`call:<id>` etc.). */
 function readHashSelection(): string | null {
-  const m = location.hash.match(/(call|run)=(\d+)/)
-  return m ? `${m[1]}:${m[2]}` : null
+  const m = location.hash.match(/(call|run)=(\d+)|el=(conv_\w+)/)
+  return m ? (m[3] ? `el:${m[3]}` : `${m[1]}:${m[2]}`) : null
 }
 
 // A shared link carries the view in ?view=<base64 json>; it's applied once and stripped from the URL.
@@ -124,6 +132,8 @@ export default function App() {
   const [meta, setMeta] = useState<{
     total: number; truncated: boolean; at: Date; from: string; to: string
     calls?: number; sims?: number; results?: number; projectId: number
+    /** 11Labs-only rows added, and why that failed if it did (the Cekura rows still load). */
+    elOnly?: number; elError?: string
   } | null>(null)
   const callsRef = useRef(calls)
   callsRef.current = calls
@@ -194,27 +204,57 @@ export default function App() {
     // Every agent is always loaded; picking agents is a filter on the loaded data, like any other.
     // (Older saved queries may still carry a server-side agentId; it's ignored so it can't hide calls.)
     const listQuery = { projectId: q.projectId, ...range }
-    // Calls and simulations load in parallel; the progress bar shows their combined count.
-    const parts = { calls: { loaded: 0, total: 0 }, sims: { loaded: 0, total: 0 } }
-    const report = (key: 'calls' | 'sims') => (loaded: number, total: number) => {
+    // Everything loads in parallel; the progress bar shows the combined count.
+    const parts = { calls: { loaded: 0, total: 0 }, sims: { loaded: 0, total: 0 }, el: { loaded: 0, total: 0 } }
+    const report = (key: keyof typeof parts) => (loaded: number, total: number) => {
       parts[key] = { loaded, total }
-      setProgress({ loaded: parts.calls.loaded + parts.sims.loaded, total: parts.calls.total + parts.sims.total })
+      const all = Object.values(parts)
+      setProgress({ loaded: all.reduce((a, p) => a + p.loaded, 0), total: all.reduce((a, p) => a + p.total, 0) })
     }
+    const withCalls = sourceIncludes(source, 'calls')
+    const withSims = sourceIncludes(source, 'sims')
+    // Only used to label rows (and find the 11Labs agents); a failure here shouldn't block the list.
+    const agentsP: Promise<ProviderAgents> = listProviderAgents(settings, q.projectId)
+      .catch(() => ({ byCekuraAgent: new Map(), elevenLabs: new Map() }))
+    // ElevenLabs conversations, plus the provider IDs of whatever Cekura has that isn't being
+    // loaded, so only conversations Cekura never imported get added.
+    const elP = q.elevenLabs
+      ? agentsP.then(async (agents) => {
+        const [conversations, known] = await Promise.all([
+          listConversations([...agents.elevenLabs.keys()], Date.parse(range.from), Date.parse(range.to), (n) => report('el')(n, n), ctrl.signal),
+          listKnownProviderIds(settings, listQuery, { calls: !withCalls, sims: !withSims }, ctrl.signal),
+        ])
+        return { conversations, known, agents }
+      }).catch((e: Error) => {
+        if (e.name === 'AbortError') throw e
+        return { error: String(e.message ?? e) }
+      })
+      : null
     try {
-      const [callRes, simRes, providerAgents] = await Promise.all([
-        source !== 'sims' ? listCalls(settings, listQuery, report('calls'), ctrl.signal) : null,
-        source !== 'calls' || pinned.length ? listSims(settings, listQuery, report('sims'), ctrl.signal, pinned, source === 'calls') : null,
-        // Only used to label rows; a failure here shouldn't block the list.
-        listProviderAgents(settings, q.projectId).catch(() => new Map<number, string>()),
+      const [callRes, simRes, providerAgents, el] = await Promise.all([
+        withCalls ? listCalls(settings, listQuery, report('calls'), ctrl.signal) : null,
+        withSims || pinned.length ? listSims(settings, listQuery, report('sims'), ctrl.signal, pinned, !withSims) : null,
+        agentsP,
+        elP,
       ])
-      const withAgents = [...(callRes?.calls ?? []), ...(simRes?.calls ?? [])].map((c) => ({
+      const cekuraRows = [...(callRes?.calls ?? []), ...(simRes?.calls ?? [])]
+      let elRows: CallLog[] = []
+      if (el && 'conversations' in el) {
+        const known = new Set([...el.known, ...cekuraRows.map((c) => c.call_id)])
+        elRows = el.conversations
+          .filter((c) => !known.has(c.conversation_id))
+          .map((c) => conversationToCallLog(c, q.projectId, el.agents.elevenLabs.get(c.agent_id)))
+      }
+      const withAgents = cekuraRows.map((c) => ({
         ...c,
-        providerAgentId: c.providerAgentId ?? providerAgents.get(c.agent) ?? null,
+        providerAgentId: c.providerAgentId ?? providerAgents.byCekuraAgent.get(c.agent) ?? null,
         // Production ElevenLabs calls start with an unknown branch (undefined) until it's fetched.
         branchId: c.source === 'sim' ? c.branchId ?? null : c.call_id?.startsWith('conv_') ? undefined : null,
       }))
-      setCalls(withAgents)
+      setCalls([...withAgents, ...elRows])
       setMeta({
+        elOnly: el && 'conversations' in el ? elRows.length : undefined,
+        elError: el && 'error' in el ? el.error : undefined,
         total: (callRes?.total ?? 0) + (simRes?.total ?? 0),
         truncated: !!callRes?.truncated || !!simRes?.truncated,
         at: new Date(),
@@ -472,7 +512,7 @@ export default function App() {
   }
 
 
-  const sourceLabel = (query.source ?? 'calls') === 'calls' ? 'calls' : query.source === 'sims' ? 'simulation runs' : 'calls & runs'
+  const sourceLabel = { calls: 'calls', sims: 'simulation runs', both: 'calls & runs', none: 'conversations' }[query.source ?? 'calls']
 
   return (
     <div className="app">
@@ -483,18 +523,15 @@ export default function App() {
         <AgentFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
         <div className="source-toggles">
           {SOURCE_TOGGLES.map((t) => {
-            const source = query.source ?? 'calls'
-            const on = sourceIncludes(source, t.key)
-            const only = on && source !== 'both'
+            const on = t.key === 'el' ? !!query.elevenLabs : sourceIncludes(query.source ?? 'calls', t.key)
+            const next = toggleSource(query, t.key)
             return (
               <button key={t.key} className={`toggle ${on ? 'on' : ''}`} aria-pressed={on}
-                title={only ? 'At least one source has to stay on' : on ? `Hide ${t.label.toLowerCase()}` : `Include ${t.label.toLowerCase()}`}
+                title={next === query ? 'At least one source has to stay on' : on ? `Hide ${t.hint}` : `Include ${t.hint}`}
                 onClick={() => {
-                  const next = toggleSource(source, t.key)
-                  if (next === source) return
-                  const q = { ...query, source: next }
-                  setQuery(q)
-                  load(q)
+                  if (next === query) return
+                  setQuery(next)
+                  load(next)
                 }}>
                 <span className="toggle-box">{on ? '✓' : ''}</span>{t.label}
               </button>
@@ -533,7 +570,7 @@ export default function App() {
             if (ids.length === 0) {
               setFilter('result_id', null)
               // With Simulations off, the runs were only loaded for these IDs, so they go too.
-              if ((query.source ?? 'calls') === 'calls') {
+              if (!sourceIncludes(query.source ?? 'calls', 'sims')) {
                 setCalls((prev) => prev.filter((c) => c.source !== 'sim'))
                 setMeta((m) => m && { ...m, sims: undefined, results: undefined })
               }
@@ -609,8 +646,10 @@ export default function App() {
                   </span>
                 ) : meta && (
                   <span title={`${new Date(meta.from).toLocaleString()} → ${new Date(meta.to).toLocaleString()} · loaded ${meta.at.toLocaleTimeString()}`}>
-                    <b>{sorted.length.toLocaleString()}</b> of {calls.length.toLocaleString()} {meta.sims == null ? 'calls' : meta.calls == null ? 'runs' : 'rows'}
+                    <b>{sorted.length.toLocaleString()}</b> of {calls.length.toLocaleString()} {meta.sims == null ? (meta.calls == null ? 'conversations' : 'calls') : meta.calls == null ? 'runs' : 'rows'}
                     {meta.sims != null && <> · {meta.results?.toLocaleString()} results</>}
+                    {meta.elOnly != null && (meta.calls != null || meta.sims != null) && <> · {meta.elOnly.toLocaleString()} 11Labs only</>}
+                    {meta.elError && <span className="warn" title={meta.elError}> · 11Labs failed to load</span>}
                     {meta.truncated && <span className="warn" title="Narrow the range or raise the cap in Settings"> · capped at {calls.length.toLocaleString()}</span>}
                     {' '}· loaded {meta.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                   </span>
