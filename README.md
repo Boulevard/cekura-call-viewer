@@ -1,6 +1,6 @@
 # Cekura Call Viewer
 
-A fast, local alternative to the Cekura dashboard's call list. It loads every call log and simulation run in a time range up front, so you can filter and sort by any metric instantly, choose which metrics appear as columns, fold simulation runs under their result, and read a call's metrics, transcript, tool calls and recording without leaving the list. Every row links back to Cekura and to the call in ElevenLabs or Retell.
+A fast, local alternative to the Cekura dashboard's call list. It loads every call log and simulation run in a time range up front, so you can filter and sort by any metric instantly, choose which metrics appear as columns, fold simulation runs under their result, and read a call's metrics, transcript, tool calls and recording without leaving the list. Every row links back to Cekura and to the call in ElevenLabs or Retell, and it can also pull in ElevenLabs conversations that never made it into Cekura.
 
 It runs on your machine against the Cekura API with your own API key. There's nothing to deploy.
 
@@ -26,6 +26,7 @@ All settings go in `.env.local` (gitignored). Only the API key is required.
 | --- | --- | --- |
 | `CEKURA_API_KEY` | – | Cekura API key. The dev server adds it to API requests, so it never reaches the browser. |
 | `VITE_CEKURA_PROJECT_ID` | `3201` | Project the app opens on before you've picked one. |
+| `ELEVENLABS_API_KEY` | – | Optional. Needed for the **11Labs** source and the ElevenLabs tab in call details. The ai-receptionist repo has one in `packages/elevenlabs/.env.local`. |
 
 The ⚙ Settings dialog also lets you set an API key in the browser (stored in localStorage), raise the cap on how many calls are loaded, and change the ElevenLabs, Retell and Datadog link formats.
 
@@ -33,9 +34,15 @@ The ⚙ Settings dialog also lets you set an API key in the browser (stored in l
 
 ### Loading data
 
-Pick a project and a time range, then use the **Calls** and **Simulations** toggles to choose what to load. Turn both on to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
+Pick a project and a time range, then use the **Calls**, **Simulations** and **11Labs** toggles to choose what to load. Turn on Calls and Simulations to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
 
 Simulation runs are found through their results (test-suite executions) created in the range. They show a `SIM` tag, and the **Simulation** column group adds result, scenario, personality, expected outcome (met / partial / not met), evaluation status and agent version.
+
+### ElevenLabs conversations Cekura doesn't have
+
+Cekura doesn't import every ElevenLabs call (manual test calls to dev branches often go missing, and recent calls show up a few minutes late). The **11Labs** toggle loads the ElevenLabs conversations for the project's ElevenLabs agents in the time range and adds the ones Cekura doesn't have, tagged `11L` (Source: `11Labs only`). Turn Calls and Simulations off to see only those.
+
+Their detail view comes from ElevenLabs: transcript, tool calls, recording, and ElevenLabs' own evaluation criteria and data collection in place of Cekura metrics. They have no Cekura link or metric columns. Any ElevenLabs call, in Cekura or not, also gets an **ElevenLabs** tab in its detail view with the raw conversation from ElevenLabs.
 
 ### Layout
 
@@ -95,7 +102,7 @@ Click a row, or press `Enter`. The panel shows:
 - The call summary, dynamic variables, latency, cost and raw JSON.
 - For simulation runs, the scenario instructions and the expected-outcome breakdown.
 
-Each call or run has its own URL (`#call=<id>` or `#run=<id>`), so you can share links to them.
+Each call or run has its own URL (`#call=<id>`, `#run=<id>`, or `#el=<conversation id>` for 11Labs-only rows), so you can share links to them.
 
 The detail header also links to Boulevard's backend logs in Datadog:
 
@@ -121,19 +128,20 @@ The caller's phone number isn't in the logs, so it can't be used. Neither link f
 
 ### Saved views
 
-The **View:** menu saves your columns, filters and sort under a name, optionally with the project, agent, time range and Calls/Simulations setting. A dot on the button means the active view has unsaved changes; from the menu you can save, revert, rename or delete views, or copy a link that carries the current setup.
+The **View:** menu saves your columns, filters and sort under a name, optionally with the project, agent, time range and source toggles. A dot on the button means the active view has unsaved changes; from the menu you can save, revert, rename or delete views, or copy a link that carries the current setup.
 
 Views are stored in `views.json` in the project folder, written by the dev server. It's gitignored, so your views stay yours. The browser keeps a copy in localStorage as a fallback.
 
 ## How it works
 
-- `pnpm dev` runs a Vite dev server that serves the app and proxies `/cekura/*` to `https://api.cekura.ai`, adding your API key. It also serves a small local endpoint that reads and writes `views.json`.
+- `pnpm dev` runs a Vite dev server that serves the app and proxies `/cekura/*` to `https://api.cekura.ai` and `/elevenlabs/*` to `https://api.elevenlabs.io`, adding your API keys. It also serves a small local endpoint that reads and writes `views.json`.
 - Everything else happens in the browser. The list is loaded once per query and kept in memory, which is why filtering and sorting are instant. Row details are fetched when you open them.
-- Because the proxy adds your API key to every request, only run it on your own machine. Don't expose the dev server on a network or deploy it.
+- Because the proxy adds your API keys to every request, only run it on your own machine. Don't expose the dev server on a network or deploy it.
 
 ```
 src/
   api.ts            Cekura API client (call logs, results, runs, agents)
+  elevenlabs.ts     ElevenLabs conversations, mapped to the shapes the table and detail view use
   columns.ts        Column definitions and how each row's values are derived
   filters.ts        Filtering, sorting and header summaries
   grouping.ts       Folding simulation runs under their result
@@ -156,4 +164,5 @@ pnpm build      # typecheck + production build (what CI runs)
 - **401/403 when loading:** `CEKURA_API_KEY` is missing or wrong in `.env.local`. Restart `pnpm dev` after changing it.
 - **Some agents are missing:** they probably had no production calls in the time range. Dev agents usually only appear as simulation runs, so turn on **Simulations** or widen the range.
 - **A run says "not linked to a provider call":** Cekura couldn't match the run to an ElevenLabs or Retell conversation. Hover the cell for Cekura's error message.
+- **11Labs failed to load:** `ELEVENLABS_API_KEY` is missing or wrong in `.env.local`. Hover the warning for the error. Restart `pnpm dev` after changing it.
 - **Saved views are missing:** the app isn't running under `pnpm dev`, so it can't reach `views.json` and falls back to the browser's copy. The Views menu says where views are being saved.

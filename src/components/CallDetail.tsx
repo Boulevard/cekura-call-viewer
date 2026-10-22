@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCall, getRun } from '../api'
+import { getConversationDetail, getRawConversation } from '../elevenlabs'
 import { binaryValue, expectedOutcomeLabel, formatDuration, parseDuration, type Row } from '../columns'
 import { cekuraLink, providerLink, type Settings } from '../settings'
 import type { CallDetail as Detail, CallLog, CallMetric, EvaluationMetric } from '../types'
@@ -28,7 +29,7 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
   const call = row.call
   const [detail, setDetail] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'transcript' | 'data' | 'raw'>('transcript')
+  const [tab, setTab] = useState<'transcript' | 'data' | 'raw' | 'elevenlabs'>('transcript')
   const audioRef = useRef<HTMLAudioElement>(null)
   const [time, setTime] = useState(0)
   const [rate, setRate] = useState(1)
@@ -38,19 +39,25 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
     setDetail(null)
     setError(null)
     setTime(0)
-    const fetchDetail = call.source === 'sim' ? getRun : getCall
-    fetchDetail(settings, call.id).then(
+    const fetched: Promise<Detail> = call.source === 'el' ? getConversationDetail(call)
+      : call.source === 'sim' ? getRun(settings, call.id) : getCall(settings, call.id)
+    fetched.then(
       (d) => !cancelled && setDetail(d),
       (e) => !cancelled && setError(String(e.message ?? e)),
     )
     return () => { cancelled = true }
-  }, [call.id, call.source, settings])
+    // call.uid identifies the row; call itself is a new object whenever the list reloads.
+  }, [call.uid, settings])
+
+  const isElevenLabs = call.call_id?.startsWith('conv_')
+  if (tab === 'elevenlabs' && !isElevenLabs) setTab('transcript')
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = rate
   }, [rate, detail])
 
   const prov = providerLink(settings, call.call_id)
+  const cekura = cekuraLink(call)
   const recording = detail?.voice_recording_url || detail?.metadata?.recording_url
   const seek = (t: number) => {
     const a = audioRef.current
@@ -70,6 +77,7 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
           </div>
           <h2>
             {call.sim && <span className="sim-tag big">SIMULATION</span>}
+            {call.source === 'el' && <span className="sim-tag el-tag big" title="This conversation is in ElevenLabs but was never imported into Cekura">11LABS ONLY</span>}
             {call.sim ? call.sim.scenarioName : call.agent_name}
           </h2>
           <button className="btn ghost close" onClick={onClose} title="Close (Esc)">✕</button>
@@ -93,13 +101,13 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
         )}
         {call.error_message && <div className="detail-warning">⚠ {call.error_message.replace(/^CLIENT_WARNING:\s*/, '')}</div>}
         <div className="detail-links">
-          <a className="btn" href={cekuraLink(call)} target="_blank" rel="noreferrer">{call.sim ? 'Open result in Cekura ↗' : 'Open in Cekura ↗'}</a>
+          {cekura && <a className="btn" href={cekura} target="_blank" rel="noreferrer">{call.sim ? 'Open result in Cekura ↗' : 'Open in Cekura ↗'}</a>}
           {prov && <a className="btn" href={prov.url} target="_blank" rel="noreferrer">Open in {prov.label} ↗</a>}
           {datadogLinks(settings, call, detail).map((l) => (
             <a key={l.label} className="btn datadog" href={l.url} target="_blank" rel="noreferrer" title={l.title}>{l.label} ↗</a>
           ))}
           {call.call_id && <CopyButton text={call.call_id} label={call.call_id} />}
-          <CopyButton text={String(call.id)} label={call.sim ? `run #${call.id}` : `#${call.id}`} />
+          {call.source !== 'el' && <CopyButton text={String(call.id)} label={call.sim ? `run #${call.id}` : `#${call.id}`} />}
         </div>
         {recording && (
           <div className="audio-bar">
@@ -115,7 +123,9 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
         <section className={`detail-metrics ${activePane === 'metrics' ? 'active-pane' : ''}`}
           ref={(el) => paneRef('metrics', el)} onMouseDown={() => onActivatePane('metrics')}>
           {call.sim && detail && <ExpectedOutcome detail={detail} />}
-          <MetricsPanel metrics={call.metrics} evaluation={detail?.evaluation?.metrics} />
+          {call.source === 'el' && <div className="muted small el-note">Not in Cekura, so there are no Cekura metrics. These are ElevenLabs' own evaluation criteria and data collection.</div>}
+          {/* 11Labs-only rows get their metrics from the conversation, which is only fetched here. */}
+          <MetricsPanel metrics={call.source === 'el' ? detail?.metrics ?? [] : call.metrics} evaluation={detail?.evaluation?.metrics} />
           {!!detail?.rubric?.length && (
             <div className="rubric">
               <h3>Expected-outcome checks</h3>
@@ -136,6 +146,7 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
             <button className={tab === 'transcript' ? 'on' : ''} onClick={() => setTab('transcript')}>Transcript</button>
             <button className={tab === 'data' ? 'on' : ''} onClick={() => setTab('data')}>{call.sim ? 'Scenario & data' : 'Call data'}</button>
             <button className={tab === 'raw' ? 'on' : ''} onClick={() => setTab('raw')}>Raw JSON</button>
+            {isElevenLabs && <button className={tab === 'elevenlabs' ? 'on' : ''} onClick={() => setTab('elevenlabs')} title="The conversation as ElevenLabs has it">ElevenLabs</button>}
           </div>
           <div className="tab-body" ref={(el) => paneRef('main', el)}>
             {error && <div className="error">Failed to load call: {error}</div>}
@@ -143,11 +154,27 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
             {detail && tab === 'transcript' && <Transcript detail={detail} currentTime={time} onSeek={seek} />}
             {detail && tab === 'data' && <CallData detail={detail} />}
             {detail && tab === 'raw' && <JsonView value={detail} defaultOpen={1} />}
+            {tab === 'elevenlabs' && isElevenLabs && <ElevenLabsRaw id={call.call_id} />}
           </div>
         </section>
       </div>
     </aside>
   )
+}
+
+function ElevenLabsRaw({ id }: { id: string }) {
+  const [state, setState] = useState<{ id: string; raw?: unknown; error?: string } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    getRawConversation(id).then(
+      (raw) => !cancelled && setState({ id, raw }),
+      (e) => !cancelled && setState({ id, error: String(e.message ?? e) }),
+    )
+    return () => { cancelled = true }
+  }, [id])
+  if (state?.id !== id) return <div className="muted">Loading from ElevenLabs…</div>
+  if (state.error) return <div className="error">Failed to load from ElevenLabs: {state.error}</div>
+  return <JsonView value={state.raw} defaultOpen={1} />
 }
 
 const metricText = (call: CallLog, name: string) => {

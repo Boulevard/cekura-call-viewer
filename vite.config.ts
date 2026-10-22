@@ -44,6 +44,7 @@ const viewsFileApi: Connect.NextHandleFunction = (req, res, next) => {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiKey = env.CEKURA_API_KEY
+  const elevenLabsKey = env.ELEVENLABS_API_KEY
   const target = env.CEKURA_API_URL || 'https://api.cekura.ai'
 
   return {
@@ -67,6 +68,17 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (req) => {
               if (apiKey && !req.getHeader('x-cekura-api-key')) req.setHeader('X-CEKURA-API-KEY', apiKey)
+            })
+          },
+        },
+        // Same idea for ElevenLabs, used to show conversations Cekura never imported.
+        '/elevenlabs': {
+          target: 'https://api.elevenlabs.io',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/elevenlabs/, ''),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (req) => {
+              if (elevenLabsKey) req.setHeader('xi-api-key', elevenLabsKey)
             })
           },
         },

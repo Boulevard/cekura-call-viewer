@@ -268,12 +268,78 @@ export function getRun(settings: Settings, id: number): Promise<CallDetail> {
 
 // ---- Provider agents & ElevenLabs branches ---------------------------------------------------
 
-/** Cekura agent ID -> the ElevenLabs/Retell agent ID it's configured with. */
-export async function listProviderAgents(settings: Settings, projectId: number): Promise<Map<number, string>> {
-  const res = await get<Page<{ id: number; assistant_id: string }>>(settings, '/test_framework/v1/aiagents/', {
-    project_id: projectId, page_size: 200, ql: '{id,assistant_id}',
+export interface ProviderAgents {
+  /** Cekura agent ID -> the ElevenLabs/Retell agent ID it's configured with. */
+  byCekuraAgent: Map<number, string>
+  /** ElevenLabs agent ID -> the Cekura agent set up with it, so 11Labs-only rows file under the same agent. */
+  elevenLabs: Map<string, { id: number; name: string }>
+}
+
+export async function listProviderAgents(settings: Settings, projectId: number): Promise<ProviderAgents> {
+  const res = await get<Page<{ id: number; agent_name: string; assistant_id: string; assistant_provider: string }>>(settings, '/test_framework/v1/aiagents/', {
+    project_id: projectId, page_size: 200, ql: '{id,agent_name,assistant_id,assistant_provider}',
   })
-  return new Map(res.results.filter((a) => a.assistant_id).map((a) => [a.id, a.assistant_id]))
+  const rows = res.results.filter((a) => a.assistant_id)
+  const elevenLabs = new Map<string, { id: number; name: string }>()
+  for (const a of rows) {
+    if (a.assistant_provider === 'elevenlabs' && !elevenLabs.has(a.assistant_id)) elevenLabs.set(a.assistant_id, { id: a.id, name: a.agent_name })
+  }
+  return { byCekuraAgent: new Map(rows.map((a) => [a.id, a.assistant_id])), elevenLabs }
+}
+
+/**
+ * Provider call IDs Cekura has in a time window (calls and simulation runs), fetched with only the
+ * ID field. Used to tell which ElevenLabs conversations Cekura never imported when the full call
+ * or run list isn't loaded.
+ */
+export async function listKnownProviderIds(settings: Settings, q: ListQuery, which: { calls: boolean; sims: boolean }, signal?: AbortSignal): Promise<Set<string>> {
+  const ids = new Set<string>()
+  // The call-logs endpoint caps page_size at 200.
+  const ID_PAGE_SIZE = 200
+  // Runs CONCURRENCY tasks at a time, so a long range doesn't page through IDs one request at a time.
+  const pool = async (tasks: (() => Promise<void>)[]) => {
+    let next = 0
+    const worker = async () => { while (next < tasks.length) await tasks[next++]() }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, worker))
+  }
+
+  const calls = async () => {
+    const params = { project_id: q.projectId, timestamp_from: q.from, timestamp_to: q.to, page_size: ID_PAGE_SIZE, ql: '{call_id}' }
+    const path = '/observability/v2/call-logs/'
+    const add = (rows: { call_id: string }[]) => { for (const r of rows) if (r.call_id) ids.add(r.call_id) }
+    const first = await get<Page<{ call_id: string }>>(settings, path, { ...params, page: 1, include_count: 'true' }, signal)
+    add(first.results)
+    const pages = Math.ceil((first.count ?? 0) / ID_PAGE_SIZE)
+    await pool(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => async () => {
+      add((await get<Page<{ call_id: string }>>(settings, path, { ...params, page: i + 2 }, signal)).results)
+    }))
+  }
+
+  const sims = async () => {
+    // A result started just before the window can still have runs inside it.
+    const from = Date.parse(q.from) - 3600e3
+    const resultIds: number[] = []
+    for (let page = 1; ; page++) {
+      const res = await get<Page<ResultRow>>(settings, '/test_framework/v1/results/', { project_id: q.projectId, page, page_size: PAGE_SIZE, ql: RESULT_FIELDS }, signal)
+      for (const r of res.results) if (Date.parse(r.created_at) >= from) resultIds.push(r.id)
+      const last = res.results.at(-1)
+      if (!res.next || !last || Date.parse(last.created_at) < from) break
+    }
+    const chunks: number[][] = []
+    for (let i = 0; i < resultIds.length; i += RESULTS_PER_RUN_QUERY) chunks.push(resultIds.slice(i, i + RESULTS_PER_RUN_QUERY))
+    await pool(chunks.map((chunk) => async () => {
+      for (let page = 1; ; page++) {
+        const res = await get<Page<{ provider_call_id: string }>>(settings, '/test_framework/v2/runs/', {
+          project_id: q.projectId, result_ids: chunk.join(','), page, page_size: ID_PAGE_SIZE, ql: '{provider_call_id}',
+        }, signal)
+        for (const r of res.results) if (r.provider_call_id) ids.add(r.provider_call_id)
+        if (!res.next) break
+      }
+    }))
+  }
+
+  await Promise.all([which.calls && calls(), which.sims && sims()])
+  return ids
 }
 
 const BRANCH_BATCH = 20
