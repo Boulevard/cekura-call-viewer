@@ -15,7 +15,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
-import { BusinessFilter, QualifiedFilter, ResultIdsFilter } from './components/QuickFilters'
+import { AgentFilter, BusinessFilter, QualifiedFilter, ResultIdsFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
@@ -191,7 +191,9 @@ export default function App() {
     setProgress({ loaded: 0, total: 0 })
     const source = q.source ?? 'calls'
     const pinned = extraResultIds ?? pinnedResultIds(viewRef.current.filters)
-    const listQuery = { projectId: q.projectId, agentId: q.agentId ? Number(q.agentId) : undefined, ...range }
+    // Every agent is always loaded; picking agents is a filter on the loaded data, like any other.
+    // (Older saved queries may still carry a server-side agentId; it's ignored so it can't hide calls.)
+    const listQuery = { projectId: q.projectId, ...range }
     // Calls and simulations load in parallel; the progress bar shows their combined count.
     const parts = { calls: { loaded: 0, total: 0 }, sims: { loaded: 0, total: 0 } }
     const report = (key: 'calls' | 'sims') => (loaded: number, total: number) => {
@@ -469,11 +471,6 @@ export default function App() {
     navigator.clipboard.writeText(`${location.origin}${location.pathname}?view=${payload}`)
   }
 
-  const agents = useMemo(() => {
-    const m = new Map<number, string>()
-    for (const c of calls) m.set(c.agent, c.agent_name)
-    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [calls])
 
   const sourceLabel = (query.source ?? 'calls') === 'calls' ? 'calls' : query.source === 'sims' ? 'simulation runs' : 'calls & runs'
 
@@ -483,11 +480,7 @@ export default function App() {
         <div className="brand"><span className="brand-mark" /><span className="brand-text">Cekura Calls</span></div>
         <ProjectPicker projects={projects} value={query.projectId}
           onChange={(projectId) => { const q = { ...query, projectId, agentId: '' }; setQuery(q); load(q) }} />
-        <label className="field-pill" title="Only load one Cekura agent (all agents when empty)">Agent
-          <input list="agents" placeholder="all" value={query.agentId} onChange={(e) => setQuery({ ...query, agentId: e.target.value })}
-            onKeyDown={(e) => e.key === 'Enter' && load()} />
-          <datalist id="agents">{agents.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</datalist>
-        </label>
+        <AgentFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
         <div className="source-toggles">
           {SOURCE_TOGGLES.map((t) => {
             const source = query.source ?? 'calls'

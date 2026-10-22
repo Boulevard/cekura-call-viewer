@@ -20,8 +20,16 @@ interface BusinessProps {
   onSetFilter: (col: string, f: Filter | null) => void
 }
 
-export function BusinessFilter({ columns, filters, facetRowsFor, onSetFilter }: BusinessProps) {
-  const col = findMetric(columns, 'Info: Business Name')
+export function BusinessFilter(p: BusinessProps) {
+  return <MultiValueFilter {...p} col={findMetric(p.columns, 'Info: Business Name')} one="business" many="businesses" />
+}
+
+export function AgentFilter(p: BusinessProps) {
+  return <MultiValueFilter {...p} col={p.columns.find((c) => c.key === 'agent_name')} one="agent" many="agents" />
+}
+
+/** Searchable multi-select over one column's values, written as an ordinary "is any of" filter. */
+function MultiValueFilter({ col, one, many, filters, facetRowsFor, onSetFilter }: BusinessProps & { col: Column | undefined; one: string; many: string }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const filter = col ? filters.find((f) => f.col === col.key) : undefined
@@ -38,38 +46,38 @@ export function BusinessFilter({ columns, filters, facetRowsFor, onSetFilter }: 
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, MAX_LISTED)
   }, [col, open, q, facetRowsFor])
-  // Picked businesses come first so the current selection is always visible.
+  // Picked values come first so the current selection is always visible.
   const ordered = (sel: string[]) => [...options.filter(([v]) => sel.includes(v)), ...options.filter(([v]) => !sel.includes(v))]
 
   if (!col) return null
   const set = (values: string[]) => onSetFilter(col.key, values.length ? { col: col.key, type: 'set', values } : null)
   const toggle = (v: string) => set(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v])
-  // Selected businesses stay listed (at the top) even when the search or other filters hide them.
+  // Selected values stay listed (at the top) even when the search or other filters hide them.
   const shownSelected = selected.filter((v) => !options.some(([o]) => o === v))
 
-  const label = custom ? 'Business: custom' : selected.length === 0 ? 'All businesses' : selected.length === 1 ? selected[0] : `${selected.length} businesses`
+  const label = custom ? `${one[0].toUpperCase()}${one.slice(1)}: custom` : selected.length === 0 ? `All ${many}` : selected.length === 1 ? selected[0] : `${selected.length} ${many}`
 
   return (
     <div className="popover-anchor">
-      <button className={`btn quick-btn ${filter ? 'active' : ''}`} onClick={() => setOpen(true)} title={selected.join('\n') || 'Filter by business'}>
+      <button className={`btn quick-btn ${filter ? 'active' : ''}`} onClick={() => setOpen(true)} title={selected.join('\n') || `Filter by ${one}`}>
         <span className="ellipsis">{label}</span><span className="muted">▾</span>
       </button>
       {open && (
         <Popover onClose={() => { setOpen(false); setQ('') }} className="quick-popover">
-          <input autoFocus className="quick-search" placeholder="Search businesses…" value={q} onChange={(e) => setQ(e.target.value)}
+          <input autoFocus className="quick-search" placeholder={`Search ${many}…`} value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && options[0]) { toggle(options[0][0]); setQ('') } }} />
           <div className="quick-list">
             {[...shownSelected.map((v) => [v, 0] as [string, number]), ...ordered(selected)].map(([v, n]) => (
               <label key={v} className={`quick-item ${selected.includes(v) ? 'on' : ''}`}>
                 <input type="checkbox" checked={selected.includes(v)} onChange={() => toggle(v)} />
-                <span className="ellipsis">{v}</span>
+                <span className="ellipsis" title={v}>{v}</span>
                 <span className="quick-count">{n ? n.toLocaleString() : ''}</span>
               </label>
             ))}
-            {options.length === 0 && shownSelected.length === 0 && <div className="muted quick-empty">No businesses match.</div>}
+            {options.length === 0 && shownSelected.length === 0 && <div className="muted quick-empty">No {many} match.</div>}
           </div>
           <div className="quick-footer">
-            <span className="muted small">{selected.length ? `${selected.length} selected` : 'Showing all businesses'}</span>
+            <span className="muted small">{selected.length ? `${selected.length} selected` : `Showing all ${many}`}</span>
             <span className="spacer" />
             {filter && <button className="link" onClick={() => set([])}>Clear</button>}
           </div>
