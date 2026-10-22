@@ -50,7 +50,6 @@ export function describeView(v: SavedView): string {
   const parts = [`${v.view.visible.length} columns`]
   if (v.view.filters.length) parts.push(`${v.view.filters.length} filter${v.view.filters.length > 1 ? 's' : ''}`)
   if (v.query) parts.push(v.query.range === 'custom' ? 'custom range' : `last ${v.query.range}`)
-  if (v.query?.agentId) parts.push(`agent ${v.query.agentId}`)
   if (v.query?.source && v.query.source !== 'calls') parts.push(v.query.source === 'sims' ? 'simulations' : 'calls + simulations')
   return parts.join(' · ')
 }

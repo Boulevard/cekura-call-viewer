@@ -33,7 +33,7 @@ The ⚙ Settings dialog also lets you set an API key in the browser (stored in l
 
 ### Loading data
 
-Pick a project, an optional agent ID, and a time range, then use the **Calls** and **Simulations** toggles to choose what to load. Turn both on to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
+Pick a project and a time range, then use the **Calls** and **Simulations** toggles to choose what to load. Turn both on to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
 
 Simulation runs are found through their results (test-suite executions) created in the range. They show a `SIM` tag, and the **Simulation** column group adds result, scenario, personality, expected outcome (met / partial / not met), evaluation status and agent version.
 
@@ -44,8 +44,9 @@ Simulation runs are found through their results (test-suite executions) created 
 
 ### Quick filters
 
-Next to the time range in the toolbar:
+In the toolbar:
 
+- **Agent** — search and tick any number of Cekura agents.
 - **Business** — search and tick any number of businesses (by the `Info: Business Name` metric); counts follow the other filters, and picked businesses stay at the top of the list.
 - **All / Qualified** — show every call, or only calls where the `Qualified Call` metric passed.
 - **Results** — paste a list of simulation result IDs (one per line, or separated by commas, spaces or tabs) to show only those results. Results outside the loaded time range, or with Simulations off, are fetched by ID and stay loaded while the filter is on; IDs that don't exist in the project are listed as not found. It sets a `result_id:(… OR …)` filter.
@@ -82,7 +83,7 @@ With **Group by result** on, runs from the same result fold under a result row, 
 
 ### Provider agent and branch
 
-**Provider agent** shows the ElevenLabs or Retell `agent_id` that handled each call or run (the **Agent** column is the Cekura agent), and **Branch (11Labs)** shows the ElevenLabs `branch_id`. Both are in the default view. Branches for production ElevenLabs calls need a large extra request per call (about 250KB), so they're only fetched while the Branch column is shown or used in a filter or sort; hide the column to skip that on long time ranges.
+**Provider agent** shows the ElevenLabs or Retell `agent_id` that handled each call or run (the **Agent** column is the Cekura agent), and **Branch (11Labs)** shows the ElevenLabs `branch_id`; add them from **Columns**. Branches for production ElevenLabs calls need a large extra request per call (about 250KB), so they're only fetched while the Branch column is shown or used in a filter or sort; hide the column to skip that on long time ranges.
 
 ### Call detail
 
