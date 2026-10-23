@@ -408,6 +408,24 @@ body.resizing { cursor: col-resize; user-select: none; }
 .t-tool-label { font-size: 11px; color: var(--muted); margin-top: 6px; text-transform: uppercase; }
 .t-node { color: var(--muted); font-size: 12px; text-align: center; border-top: 1px solid var(--grid); padding-top: 4px; }
 .raw-transcript { white-space: pre-wrap; }
+.latency-summary { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 12px; margin: -4px 0 10px; }
+.latency-hint { margin: -4px 0 10px; }
+.lat-good { color: var(--pass); }
+.lat-warn { color: var(--warn-text); }
+.lat-bad { color: var(--fail); }
+.lat-chip { border: 0; background: transparent; padding: 0 2px; font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.lat-chip:hover { text-decoration: underline; }
+.lat-breakdown { margin: 6px 0 4px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); font-size: 12px; min-width: 260px; }
+.lat-bar { display: flex; gap: 1px; height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.lat-seg, .lat-dot { background: var(--border-2); }
+.lat-seg { min-width: 2px; }
+.lat-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.lat-seg.llm, .lat-dot.llm { background: var(--accent); }
+.lat-seg.tool, .lat-dot.tool { background: var(--sim); }
+.lat-seg.tts, .lat-dot.tts { background: var(--pass); }
+.lat-seg.asr, .lat-dot.asr { background: var(--warn); }
+.lat-step { display: flex; gap: 6px; align-items: center; line-height: 20px; color: var(--text); }
+.t-tool-time { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .json-node, .json-line { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .json-line { white-space: pre-wrap; word-break: break-word; }

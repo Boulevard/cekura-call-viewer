@@ -49,8 +49,23 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
     // call.uid identifies the row; call itself is a new object whenever the list reloads.
   }, [call.uid, settings])
 
-  const isElevenLabs = call.call_id?.startsWith('conv_')
+  const isElevenLabs = !!call.call_id?.startsWith('conv_')
   if (tab === 'elevenlabs' && !isElevenLabs) setTab('transcript')
+
+  // Cekura's copy of an ElevenLabs call drops the per-turn metrics, so the transcript's latency
+  // and the ElevenLabs tab both use the conversation fetched from ElevenLabs.
+  const [elRaw, setElRaw] = useState<{ id: string; raw?: Record<string, any>; error?: string } | null>(null)
+  useEffect(() => {
+    if (!isElevenLabs) return
+    let cancelled = false
+    const id = call.call_id
+    getRawConversation(id).then(
+      (raw) => !cancelled && setElRaw({ id, raw }),
+      (e) => !cancelled && setElRaw({ id, error: String(e.message ?? e) }),
+    )
+    return () => { cancelled = true }
+  }, [call.call_id, isElevenLabs])
+  const el = elRaw?.id === call.call_id ? elRaw : null
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = rate
@@ -151,30 +166,19 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
           <div className="tab-body" ref={(el) => paneRef('main', el)}>
             {error && <div className="error">Failed to load call: {error}</div>}
             {!detail && !error && <div className="muted">Loading call…</div>}
-            {detail && tab === 'transcript' && <Transcript detail={detail} currentTime={time} onSeek={seek} />}
+            {detail && tab === 'transcript' && <Transcript detail={detail} elevenLabs={el?.raw} currentTime={time} onSeek={seek} />}
             {detail && tab === 'data' && <CallData detail={detail} />}
             {detail && tab === 'raw' && <JsonView value={detail} defaultOpen={1} />}
-            {tab === 'elevenlabs' && isElevenLabs && <ElevenLabsRaw id={call.call_id} />}
+            {tab === 'elevenlabs' && isElevenLabs && (
+              !el ? <div className="muted">Loading from ElevenLabs…</div>
+                : el.error ? <div className="error">Failed to load from ElevenLabs: {el.error}</div>
+                  : <JsonView value={el.raw} defaultOpen={1} />
+            )}
           </div>
         </section>
       </div>
     </aside>
   )
-}
-
-function ElevenLabsRaw({ id }: { id: string }) {
-  const [state, setState] = useState<{ id: string; raw?: unknown; error?: string } | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    getRawConversation(id).then(
-      (raw) => !cancelled && setState({ id, raw }),
-      (e) => !cancelled && setState({ id, error: String(e.message ?? e) }),
-    )
-    return () => { cancelled = true }
-  }, [id])
-  if (state?.id !== id) return <div className="muted">Loading from ElevenLabs…</div>
-  if (state.error) return <div className="error">Failed to load from ElevenLabs: {state.error}</div>
-  return <JsonView value={state.raw} defaultOpen={1} />
 }
 
 const metricText = (call: CallLog, name: string) => {
