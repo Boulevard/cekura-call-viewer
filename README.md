@@ -99,7 +99,7 @@ Click a row, or press `Enter`. The panel shows:
 - Every metric with Cekura's explanation, failures first.
 - The recording, with playback speed controls. Click any timestamp in the transcript to play from there.
 - The transcript, with tool calls you can expand. Failed tool calls are flagged, and Retell calls can also show flow-node transitions.
-- Per-turn latency for ElevenLabs and Retell calls: each agent turn shows how long the caller waited (from going quiet to the agent's first audio), and clicking it breaks that down into speech recognition, each LLM call, each tool call and TTS. Tool calls show how long they ran (and for ElevenLabs, how long the LLM took to call them), and the top of the transcript shows the median, p90 and max. This uses the provider's own transcript, which is now the default; ElevenLabs calls fetch it from ElevenLabs, since Cekura's copy doesn't include the timings.
+- Per-turn latency for ElevenLabs and Retell calls: each agent turn shows how long the caller waited (from going quiet to the agent's first audio), and clicking it breaks that down into speech recognition, each LLM call, each tool call and TTS. ElevenLabs agent messages, spoken or text, also show the LLM time behind them (time to first token for voice, to the full response for text). Tool calls show how long they ran (and for ElevenLabs, how long the LLM took to call them), and the top of the transcript shows the median, p90 and max. This uses the provider's own transcript, which is now the default; ElevenLabs calls fetch it from ElevenLabs, since Cekura's copy doesn't include the timings.
 - The call summary, dynamic variables, latency, cost and raw JSON.
 - For simulation runs, the scenario instructions and the expected-outcome breakdown.
 

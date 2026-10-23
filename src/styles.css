@@ -425,7 +425,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .lat-seg.tts, .lat-dot.tts { background: var(--pass); }
 .lat-seg.asr, .lat-dot.asr { background: var(--warn); }
 .lat-step { display: flex; gap: 6px; align-items: center; line-height: 20px; color: var(--text); }
-.t-tool-time { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-tool-time, .t-llm-time { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .json-node, .json-line { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .json-line { white-space: pre-wrap; word-break: break-word; }

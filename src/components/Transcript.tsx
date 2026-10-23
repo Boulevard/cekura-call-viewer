@@ -13,7 +13,11 @@ interface Step { label: string; secs: number; kind: 'asr' | 'llm' | 'tool' | 'tt
 interface TurnLatency { total: number; steps: Step[] }
 
 type Item =
-  | { kind: 'agent' | 'user'; text: string; start?: number; latency?: TurnLatency }
+  | {
+    kind: 'agent' | 'user'; text: string; start?: number; latency?: TurnLatency
+    /** ElevenLabs only: how long the LLM took to produce this message (see fromElevenLabs). */
+    llm?: { secs: number; title: string }
+  }
   | {
     kind: 'tool'; id?: string; name: string; args?: string; result?: string; start?: number; ok?: boolean
     /** How long the tool ran, and (ElevenLabs only) how long the LLM took to decide to call it. */
@@ -115,6 +119,8 @@ function fromElevenLabs(raw: Record<string, any> | null | undefined): Item[] | n
   const items: Item[] = []
   const tools = new Map<string, Extract<Item, { kind: 'tool' }>>()
   let steps: Step[] = []
+  // A spoken reply can start at the LLM's first token; a text reply is sent once it's complete.
+  const isText = entries.some((e) => e.role === 'user' && e.source_medium === 'text')
   for (const e of entries) {
     if (e.role === 'user') {
       if (e.message) items.push({ kind: 'user', text: e.message, start: e.time_in_call_secs })
@@ -144,6 +150,10 @@ function fromElevenLabs(raw: Record<string, any> | null | undefined): Item[] | n
     }
     if (e.message) {
       const item: Item = { kind: 'agent', text: e.message, start: e.time_in_call_secs }
+      const first = elapsed(e, 'llm_service_ttfb')
+      const full = elapsed(e, 'llm_service_tt_last_sentence')
+      if (isText && full != null) item.llm = { secs: full, title: `LLM time to the full response${first != null ? ` (first token ${secs(first)})` : ''}` }
+      else if (first != null) item.llm = { secs: first, title: `LLM time to first token${full != null ? ` (full response ${secs(full)})` : ''}` }
       const total = elapsed(e, 'ttf_audio_since_silence')
       if (total != null) {
         const llm = elapsed(e, 'llm_service_ttfb')
@@ -254,6 +264,7 @@ function Message({ item, ts, q, active }: { item: Extract<Item, { kind: 'agent' 
             ⏱ {secs(item.latency.total)}
           </button>
         )}
+        {item.llm && <span className={`t-llm-time ${latencyClass(item.llm.secs)}`} title={item.llm.title}>LLM {secs(item.llm.secs)}</span>}
       </div>
       {open && item.latency && <LatencyBreakdown latency={item.latency} />}
       <div className="t-text">{highlight(item.text, q)}</div>
