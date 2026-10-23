@@ -3,7 +3,7 @@
  * and for showing the raw 11Labs record next to Cekura's. Requests go through the dev server's
  * /elevenlabs proxy, which adds ELEVENLABS_API_KEY.
  */
-import type { CallDetail, CallLog, CallMetric, EvaluationMetric, TranscriptEntry } from './types'
+import type { CallDetail, CallLog, CallMetric, EvaluationMetric } from './types'
 
 const BASE = '/elevenlabs/v1/convai'
 const PAGE_SIZE = 100
@@ -95,14 +95,6 @@ export function conversationToCallLog(c: ElConversationSummary, projectId: numbe
 
 // ---- detail ---------------------------------------------------------------------------------
 
-interface ElTranscriptEntry {
-  role: 'agent' | 'user'
-  message?: string | null
-  time_in_call_secs?: number
-  tool_calls?: { request_id: string; tool_name: string; params_as_json?: string }[]
-  tool_results?: { request_id: string; tool_name: string; result_value?: string; is_error?: boolean }[]
-}
-
 interface ElAnalysis {
   evaluation_criteria_results?: Record<string, { criteria_id: string; result: string; rationale?: string }>
   data_collection_results?: Record<string, { data_collection_id: string; value: unknown; rationale?: string }>
@@ -140,29 +132,16 @@ function analysisMetrics(analysis: ElAnalysis | undefined): EvaluationMetric[] {
   return out
 }
 
-/** Converts ElevenLabs' transcript to the Cekura shape the transcript view already renders. */
-function toTranscript(entries: ElTranscriptEntry[]): TranscriptEntry[] {
-  const out: TranscriptEntry[] = []
-  for (const e of entries) {
-    for (const t of e.tool_calls ?? []) {
-      out.push({ role: 'Function Call', start_time: e.time_in_call_secs, data: { id: t.request_id, name: t.tool_name, arguments: t.params_as_json } })
-    }
-    for (const r of e.tool_results ?? []) {
-      out.push({ role: 'Function Call Result', data: { id: r.request_id, name: r.tool_name, result: r.result_value, is_error: r.is_error } })
-    }
-    if (e.message) out.push({ role: e.role === 'agent' ? 'Main Agent' : 'Testing Agent', content: e.message, start_time: e.time_in_call_secs })
-  }
-  return out
-}
-
-/** An ElevenLabs conversation in the call-detail shape, for rows Cekura doesn't have. */
+/**
+ * An ElevenLabs conversation in the call-detail shape, for rows Cekura doesn't have. The transcript
+ * stays in `metadata` (the raw conversation), which the transcript view reads directly.
+ */
 export async function getConversationDetail(call: CallLog): Promise<CallDetail & { metrics: CallMetric[] }> {
   const raw = await getRawConversation(call.call_id)
   const evaluation = analysisMetrics(raw.analysis)
   return {
     ...call,
     metadata: raw,
-    transcript_object: toTranscript(raw.transcript ?? []),
     evaluation: { metrics: evaluation },
     metrics: evaluation,
     voice_recording_url: raw.has_audio ? audioUrl(call.call_id) : null,
