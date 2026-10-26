@@ -51,6 +51,8 @@ export interface CallLog {
   providerAgentId?: string | null
   /** ElevenLabs branch; only ElevenLabs calls have one, and production calls get it lazily. */
   branchId?: string | null
+  /** Loaded only because its call ID was pasted into the IDs box; dropped when that's cleared. */
+  pinned?: boolean
   id: number
   call_id: string
   project: number

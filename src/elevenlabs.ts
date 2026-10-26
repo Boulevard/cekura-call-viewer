@@ -93,6 +93,25 @@ export function conversationToCallLog(c: ElConversationSummary, projectId: numbe
   }
 }
 
+/** A single conversation as a row, for one pasted by ID that Cekura doesn't have. */
+export async function getConversationAsCallLog(id: string, projectId: number, agent?: (agentId: string) => { id: number; name: string } | undefined): Promise<CallLog> {
+  const raw = await getRawConversation(id)
+  const c: ElConversationSummary = {
+    conversation_id: raw.conversation_id,
+    agent_id: raw.agent_id,
+    agent_name: raw.agent_name ?? '',
+    branch_id: raw.branch_id,
+    start_time_unix_secs: raw.metadata?.start_time_unix_secs ?? 0,
+    call_duration_secs: raw.metadata?.call_duration_secs ?? 0,
+    message_count: raw.transcript?.length ?? 0,
+    status: raw.status,
+    termination_reason: raw.metadata?.termination_reason,
+    call_successful: raw.analysis?.call_successful,
+    call_summary_title: raw.analysis?.call_summary_title,
+  }
+  return conversationToCallLog(c, projectId, agent?.(c.agent_id))
+}
+
 // ---- detail ---------------------------------------------------------------------------------
 
 interface ElAnalysis {

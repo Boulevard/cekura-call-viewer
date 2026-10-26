@@ -56,7 +56,7 @@ In the toolbar:
 - **Agent** — search and tick any number of Cekura agents.
 - **Business** — search and tick any number of businesses (by the `Info: Business Name` metric); counts follow the other filters, and picked businesses stay at the top of the list.
 - **All / Qualified** — show every call, or only calls where the `Qualified Call` metric passed.
-- **Results** — paste a list of simulation result IDs (one per line, or separated by commas, spaces or tabs) to show only those results. Results outside the loaded time range, or with Simulations off, are fetched by ID and stay loaded while the filter is on; IDs that don't exist in the project are listed as not found. It sets a `result_id:(… OR …)` filter.
+- **IDs** — paste a list of simulation result IDs, or of ElevenLabs conversation / Retell call IDs (one per line, or separated by commas, spaces or tabs), to show only those. Results and calls outside the loaded time range, or from a source that's toggled off, are fetched by ID and stay loaded while the filter is on. ElevenLabs conversations Cekura doesn't have are fetched from ElevenLabs (Retell calls can only come from Cekura), and IDs that can't be found are listed as not found. It sets a `result_id:(… OR …)` or `call_id:(… OR …)` filter; paste one kind at a time, since the two filters would combine with AND.
 
 These set ordinary filters, so they appear as pills in the query bar, in the sidebar and in saved views, and removing the pill clears them. Calls that are still being evaluated don't have these metrics yet, so they drop out while either filter is on.
 
