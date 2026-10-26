@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, fetchCallBranches, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
-import { conversationToCallLog, listConversations } from './elevenlabs'
+import { ApiError, fetchCallBranches, getByProviderIds, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
+import { conversationToCallLog, getConversationAsCallLog, listConversations } from './elevenlabs'
 import { buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
@@ -16,7 +16,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
-import { AgentFilter, BusinessFilter, QualifiedFilter, ResultIdsFilter } from './components/QuickFilters'
+import { AgentFilter, BusinessFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
@@ -173,16 +173,20 @@ export default function App() {
     history.replaceState(null, '', location.pathname + location.hash)
   }, [shared, setView, setQuery, setActiveViewId])
 
-  // Results named in a result_id filter are fetched even outside the time range (or with
-  // Simulations off), so a pasted list of IDs always shows those results.
+  // Results and calls named in a result_id / call_id filter are fetched even outside the time
+  // range (or with their source off), so a pasted list of IDs always shows them.
   const viewRef = useRef(view)
   viewRef.current = view
   const pinnedResultIds = (filters: Filter[]) => {
     const f = filters.find((x) => x.col === 'result_id')
     return f?.type === 'set' && !f.exclude ? f.values.map(Number).filter(Number.isFinite) : []
   }
+  const pinnedCallIds = (filters: Filter[]) => {
+    const f = filters.find((x) => x.col === 'call_id')
+    return f?.type === 'set' && !f.exclude ? pastedCallIds(f.values.filter((v): v is string => v != null)) : []
+  }
 
-  const load = useCallback(async (q: Query = query, extraResultIds?: number[]) => {
+  const load = useCallback(async (q: Query = query, pins?: { results?: number[]; calls?: string[] }) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -200,7 +204,8 @@ export default function App() {
     }
     setProgress({ loaded: 0, total: 0 })
     const source = q.source ?? 'calls'
-    const pinned = extraResultIds ?? pinnedResultIds(viewRef.current.filters)
+    const pinned = pins?.results ?? pinnedResultIds(viewRef.current.filters)
+    const pinnedCalls = pins?.calls ?? pinnedCallIds(viewRef.current.filters)
     // Every agent is always loaded; picking agents is a filter on the loaded data, like any other.
     // (Older saved queries may still carry a server-side agentId; it's ignored so it can't hide calls.)
     const listQuery = { projectId: q.projectId, ...range }
@@ -245,6 +250,19 @@ export default function App() {
           .filter((c) => !known.has(c.conversation_id))
           .map((c) => conversationToCallLog(c, q.projectId, el.agents.elevenLabs.get(c.agent_id)))
       }
+      // Pasted call IDs that aren't loaded: look them up in Cekura first, then (for ElevenLabs
+      // conversations Cekura doesn't have) in ElevenLabs. Retell calls can only come from Cekura.
+      const loadedIds = new Set([...cekuraRows, ...elRows].map((c) => c.call_id))
+      const missing = pinnedCalls.filter((id) => !loadedIds.has(id))
+      if (missing.length) {
+        const found = (await getByProviderIds(settings, q.projectId, missing, ctrl.signal)).map((c) => ({ ...c, pinned: true }))
+        cekuraRows.push(...found)
+        const foundIds = new Set(found.map((c) => c.call_id))
+        const fromEl = await Promise.allSettled(missing
+          .filter((id) => id.startsWith('conv_') && !foundIds.has(id))
+          .map((id) => getConversationAsCallLog(id, q.projectId, (a) => providerAgents.elevenLabs.get(a))))
+        elRows.push(...fromEl.flatMap((r) => (r.status === 'fulfilled' ? [{ ...r.value, pinned: true }] : [])))
+      }
       const withAgents = cekuraRows.map((c) => ({
         ...c,
         providerAgentId: c.providerAgentId ?? providerAgents.byCekuraAgent.get(c.agent) ?? null,
@@ -286,6 +304,7 @@ export default function App() {
 
   const model = useMemo(() => buildModel(calls), [calls])
   const loadedResultIds = useMemo(() => new Set(calls.flatMap((c) => (c.sim ? [c.sim.resultId] : []))), [calls])
+  const loadedCallIds = useMemo(() => new Set(calls.map((c) => c.call_id)), [calls])
 
   // Branches for production ElevenLabs calls are expensive to fetch, so only do it while the
   // branch column is on screen or being filtered/sorted on.
@@ -565,19 +584,18 @@ export default function App() {
         <span className="toolbar-sep" />
         <BusinessFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
         <QualifiedFilter columns={model.columns} filters={view.filters} onSetFilter={setFilter} />
-        <ResultIdsFilter filters={view.filters} loadedResultIds={loadedResultIds} loading={!!progress}
-          onApply={(ids) => {
-            if (ids.length === 0) {
-              setFilter('result_id', null)
-              // With Simulations off, the runs were only loaded for these IDs, so they go too.
-              if (!sourceIncludes(query.source ?? 'calls', 'sims')) {
-                setCalls((prev) => prev.filter((c) => c.source !== 'sim'))
-                setMeta((m) => m && { ...m, sims: undefined, results: undefined })
-              }
-              return
-            }
-            setFilter('result_id', { col: 'result_id', type: 'set', values: ids.map(String) })
-            if (ids.some((id) => !loadedResultIds.has(id))) load(query, ids)
+        <IdsFilter filters={view.filters} loadedResultIds={loadedResultIds} loadedCallIds={loadedCallIds} loading={!!progress}
+          onApply={({ results, calls: callIds }) => {
+            // Only a list filter belongs to this box; a pattern typed in the query bar is left alone.
+            const isList = (col: string) => view.filters.some((f) => f.col === col && f.type === 'set')
+            if (results.length || isList('result_id')) setFilter('result_id', results.length ? { col: 'result_id', type: 'set', values: results.map(String) } : null)
+            if (callIds.length || isList('call_id')) setFilter('call_id', callIds.length ? { col: 'call_id', type: 'set', values: callIds } : null)
+            // Rows that were only loaded for pasted IDs go when those IDs do.
+            const simsOff = !sourceIncludes(query.source ?? 'calls', 'sims')
+            setCalls((prev) => prev.filter((c) =>
+              !(c.pinned && !callIds.includes(c.call_id)) && !(simsOff && c.source === 'sim' && !results.length && !c.pinned)))
+            if (simsOff && !results.length) setMeta((m) => m && { ...m, sims: undefined, results: undefined })
+            if (results.some((id) => !loadedResultIds.has(id)) || callIds.some((id) => !loadedCallIds.has(id))) load(query, { results, calls: callIds })
           }} />
         <span className="spacer" />
         <div className="popover-anchor">
@@ -647,7 +665,7 @@ export default function App() {
                 ) : meta && (
                   <span title={`${new Date(meta.from).toLocaleString()} → ${new Date(meta.to).toLocaleString()} · loaded ${meta.at.toLocaleTimeString()}`}>
                     <b>{sorted.length.toLocaleString()}</b> of {calls.length.toLocaleString()} {meta.sims == null ? (meta.calls == null ? 'conversations' : 'calls') : meta.calls == null ? 'runs' : 'rows'}
-                    {meta.sims != null && <> · {meta.results?.toLocaleString()} results</>}
+                    {meta.sims != null && <> · {meta.results?.toLocaleString()} result{meta.results === 1 ? '' : 's'}</>}
                     {meta.elOnly != null && (meta.calls != null || meta.sims != null) && <> · {meta.elOnly.toLocaleString()} 11Labs only</>}
                     {meta.elError && <span className="warn" title={meta.elError}> · 11Labs failed to load</span>}
                     {meta.truncated && <span className="warn" title="Narrow the range or raise the cap in Settings"> · capped at {calls.length.toLocaleString()}</span>}

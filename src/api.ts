@@ -397,3 +397,33 @@ export async function listProjects(settings: Settings): Promise<Project[]> {
   const rows = Array.isArray(res) ? res : res.results
   return rows.map((p) => ({ id: p.id, name: p.name, organization: p.organization?.name ?? null }))
 }
+
+/**
+ * Cekura calls and simulation runs for specific provider call IDs (ElevenLabs conversation or
+ * Retell call IDs), wherever they fall in time.
+ */
+export async function getByProviderIds(settings: Settings, projectId: number, ids: string[], signal?: AbortSignal): Promise<CallLog[]> {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50))
+  const [calls, runs] = await Promise.all([
+    Promise.all(chunks.map((c) => get<Page<ListRow>>(settings, '/observability/v2/call-logs/', {
+      project_id: projectId, call_ids: c.join(','), page_size: 100, ql: `{${LIST_FIELDS.join(',')}}`,
+    }, signal))),
+    Promise.all(chunks.map((c) => get<Page<RunRow>>(settings, '/test_framework/v2/runs/', {
+      project_id: projectId, provider_call_id: c.join(','), page_size: 100, ql: RUN_FIELDS,
+    }, signal))),
+  ])
+  const runRows = runs.flatMap((p) => p.results)
+  const resultIds = [...new Set(runRows.map((r) => r.result_id))]
+  const names = new Map<number, string>()
+  for (let i = 0; i < resultIds.length; i += PAGE_SIZE) {
+    const res = await get<Page<ResultRow>>(settings, '/test_framework/v1/results/', {
+      project_id: projectId, id__in: resultIds.slice(i, i + PAGE_SIZE).join(','), page_size: PAGE_SIZE, ql: RESULT_FIELDS,
+    }, signal)
+    for (const r of res.results) names.set(r.id, r.name)
+  }
+  return [
+    ...calls.flatMap((p) => p.results.map(toCallLog)),
+    ...runRows.map((r) => runToCallLog(r, projectId, names.get(r.result_id) ?? `Result ${r.result_id}`)),
+  ]
+}
