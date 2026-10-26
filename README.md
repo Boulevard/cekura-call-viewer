@@ -53,8 +53,8 @@ Their detail view comes from ElevenLabs: transcript, tool calls, recording, and 
 
 In the toolbar:
 
-- **Agent** — search and tick any number of Cekura agents.
-- **Business** — search and tick any number of businesses (by the `Info: Business Name` metric); counts follow the other filters, and picked businesses stay at the top of the list.
+- **Agent** — search and tick any number of Cekura agents, or hover one and click **Exclude** to show every agent but that one (`-agent:…`). Once something is excluded, unticking more agents excludes those too.
+- **Business** — search and tick (or exclude) any number of businesses (by the `Info: Business Name` metric); counts follow the other filters, and picked businesses stay at the top of the list.
 - **All / Qualified** — show every call, or only calls where the `Qualified Call` metric passed.
 - **IDs** — paste a list of simulation result IDs, or of ElevenLabs conversation / Retell call IDs (one per line, or separated by commas, spaces or tabs), to show only those. Results and calls outside the loaded time range, or from a source that's toggled off, are fetched by ID and stay loaded while the filter is on. ElevenLabs conversations Cekura doesn't have are fetched from ElevenLabs (Retell calls can only come from Cekura), and IDs that can't be found are listed as not found. It sets a `result_id:(… OR …)` or `call_id:(… OR …)` filter; paste one kind at a time, since the two filters would combine with AND.
 

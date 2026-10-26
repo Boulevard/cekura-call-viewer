@@ -553,6 +553,10 @@ table.mini tr.bad td { color: var(--fail); }
 .quick-item.on { background: var(--accent-soft); }
 .quick-item input { flex-shrink: 0; margin: 0; }
 .quick-item .ellipsis { flex: 1; }
+.quick-item.excluded .ellipsis { color: var(--muted); text-decoration: line-through; }
+.quick-exclude { flex-shrink: 0; font-size: 12px; visibility: hidden; }
+.quick-item:hover .quick-exclude { visibility: visible; }
+.quick-item.excluded .quick-exclude { display: none; }
 .quick-count { flex-shrink: 0; color: var(--muted-2); font-size: 12px; font-variant-numeric: tabular-nums; }
 .quick-empty { padding: 10px 6px; }
 .quick-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 6px; padding: 7px 4px 2px; }
