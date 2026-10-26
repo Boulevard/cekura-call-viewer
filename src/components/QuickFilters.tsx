@@ -28,14 +28,21 @@ export function AgentFilter(p: BusinessProps) {
   return <MultiValueFilter {...p} col={p.columns.find((c) => c.key === 'agent_name')} one="agent" many="agents" />
 }
 
-/** Searchable multi-select over one column's values, written as an ordinary "is any of" filter. */
+/**
+ * Searchable multi-select over one column's values, written as an ordinary "is any of" filter, or
+ * as "is not" once a value is excluded (everything else stays in, including values that show up
+ * after a reload).
+ */
 function MultiValueFilter({ col, one, many, filters, facetRowsFor, onSetFilter }: BusinessProps & { col: Column | undefined; one: string; many: string }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const filter = col ? filters.find((f) => f.col === col.key) : undefined
-  // A pattern or "is not" filter from the query bar isn't a plain selection, so it's shown as custom.
-  const selected = filter?.type === 'set' && !filter.exclude ? filter.values.filter((v): v is string => v != null) : []
-  const custom = !!filter && selected.length === 0
+  const listed = filter?.type === 'set' ? filter.values.filter((v): v is string => v != null) : []
+  const excludeMode = filter?.type === 'set' && !!filter.exclude && listed.length > 0
+  const selected = filter?.type === 'set' && !filter.exclude ? listed : []
+  const excluded = excludeMode ? listed : []
+  // A pattern from the query bar isn't a plain selection, so it's shown as custom.
+  const custom = !!filter && selected.length === 0 && excluded.length === 0
 
   const options = useMemo(() => {
     if (!col || !open) return []
@@ -46,20 +53,32 @@ function MultiValueFilter({ col, one, many, filters, facetRowsFor, onSetFilter }
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, MAX_LISTED)
   }, [col, open, q, facetRowsFor])
-  // Picked values come first so the current selection is always visible.
-  const ordered = (sel: string[]) => [...options.filter(([v]) => sel.includes(v)), ...options.filter(([v]) => !sel.includes(v))]
+  // Picked (or excluded) values come first so the current selection is always visible.
+  const pinned = excludeMode ? excluded : selected
+  const ordered = [...options.filter(([v]) => pinned.includes(v)), ...options.filter(([v]) => !pinned.includes(v))]
 
   if (!col) return null
-  const set = (values: string[]) => onSetFilter(col.key, values.length ? { col: col.key, type: 'set', values } : null)
-  const toggle = (v: string) => set(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v])
-  // Selected values stay listed (at the top) even when the search or other filters hide them.
-  const shownSelected = selected.filter((v) => !options.some(([o]) => o === v))
+  const include = (values: string[]) => onSetFilter(col.key, values.length ? { col: col.key, type: 'set', values } : null)
+  const exclude = (values: string[]) => onSetFilter(col.key, values.length ? { col: col.key, type: 'set', values, exclude: true } : null)
+  const isOn = (v: string) => (excludeMode ? !excluded.includes(v) : selected.includes(v))
+  const toggle = (v: string) => {
+    if (excludeMode) exclude(excluded.includes(v) ? excluded.filter((x) => x !== v) : [...excluded, v])
+    else include(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v])
+  }
+  // Excluding replaces a plain selection: it means "everything but these".
+  const excludeOne = (v: string) => exclude(excludeMode ? [...new Set([...excluded, v])] : [v])
+  // Picked/excluded values stay listed (at the top) even when the search or other filters hide them.
+  const shownPinned = pinned.filter((v) => !options.some(([o]) => o === v))
 
-  const label = custom ? `${one[0].toUpperCase()}${one.slice(1)}: custom` : selected.length === 0 ? `All ${many}` : selected.length === 1 ? selected[0] : `${selected.length} ${many}`
+  const cap = `${one[0].toUpperCase()}${one.slice(1)}`
+  const label = custom ? `${cap}: custom`
+    : excludeMode ? (excluded.length === 1 ? `All but ${excluded[0]}` : `All but ${excluded.length} ${many}`)
+      : selected.length === 0 ? `All ${many}` : selected.length === 1 ? selected[0] : `${selected.length} ${many}`
+  const title = excludeMode ? `Excluding:\n${excluded.join('\n')}` : selected.join('\n') || `Filter by ${one}`
 
   return (
     <div className="popover-anchor">
-      <button className={`btn quick-btn ${filter ? 'active' : ''}`} onClick={() => setOpen(true)} title={selected.join('\n') || `Filter by ${one}`}>
+      <button className={`btn quick-btn ${filter ? 'active' : ''}`} onClick={() => setOpen(true)} title={title}>
         <span className="ellipsis">{label}</span><span className="muted">▾</span>
       </button>
       {open && (
@@ -67,19 +86,23 @@ function MultiValueFilter({ col, one, many, filters, facetRowsFor, onSetFilter }
           <input autoFocus className="quick-search" placeholder={`Search ${many}…`} value={q} onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && options[0]) { toggle(options[0][0]); setQ('') } }} />
           <div className="quick-list">
-            {[...shownSelected.map((v) => [v, 0] as [string, number]), ...ordered(selected)].map(([v, n]) => (
-              <label key={v} className={`quick-item ${selected.includes(v) ? 'on' : ''}`}>
-                <input type="checkbox" checked={selected.includes(v)} onChange={() => toggle(v)} />
+            {[...shownPinned.map((v) => [v, 0] as [string, number]), ...ordered].map(([v, n]) => (
+              <label key={v} className={`quick-item ${isOn(v) && (excludeMode || selected.length) ? 'on' : ''} ${excluded.includes(v) ? 'excluded' : ''}`}>
+                <input type="checkbox" checked={isOn(v)} onChange={() => toggle(v)} />
                 <span className="ellipsis" title={v}>{v}</span>
+                <button className="link quick-exclude" title={`Show every ${one} except this one`}
+                  onClick={(e) => { e.preventDefault(); excludeOne(v) }}>Exclude</button>
                 <span className="quick-count">{n ? n.toLocaleString() : ''}</span>
               </label>
             ))}
-            {options.length === 0 && shownSelected.length === 0 && <div className="muted quick-empty">No {many} match.</div>}
+            {options.length === 0 && shownPinned.length === 0 && <div className="muted quick-empty">No {many} match.</div>}
           </div>
           <div className="quick-footer">
-            <span className="muted small">{selected.length ? `${selected.length} selected` : `Showing all ${many}`}</span>
+            <span className="muted small">
+              {excludeMode ? `Excluding ${excluded.length}` : selected.length ? `${selected.length} selected` : `Showing all ${many}`}
+            </span>
             <span className="spacer" />
-            {filter && <button className="link" onClick={() => set([])}>Clear</button>}
+            {filter && <button className="link" onClick={() => onSetFilter(col.key, null)}>Clear</button>}
           </div>
         </Popover>
       )}
