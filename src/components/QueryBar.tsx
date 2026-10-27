@@ -27,6 +27,8 @@ interface Props {
   facetRowsFor: (col: string) => Row[]
   /** `filters` is null when only the free-text search changed. */
   onChange: (filters: Filter[] | null, freeText: string) => void
+  /** Enter with no suggestion picked: the query is done, so keyboard focus moves to the results. */
+  onSubmit?: () => void
 }
 
 export interface QueryBarHandle { focus: () => void }
@@ -159,7 +161,12 @@ export const QueryBar = forwardRef<QueryBarHandle, Props>(function QueryBar(p, r
           else if (e.key === 'Enter') {
             e.preventDefault()
             if (showMenu && highlight >= 0 && suggestions[highlight]) accept(suggestions[highlight])
-            else { const rest = commit(text, true); placeCaret(rest.length); setMenuOpen(false) }
+            else {
+              const rest = commit(text, true)
+              placeCaret(rest.length)
+              setMenuOpen(false)
+              if (p.onSubmit) { el.blur(); p.onSubmit() }
+            }
           } else if (e.key === 'Backspace' && el.selectionStart === 0 && el.selectionEnd === 0 && pills.length) {
             // Like Datadog: backspacing past the start reopens the last pill for editing.
             e.preventDefault()

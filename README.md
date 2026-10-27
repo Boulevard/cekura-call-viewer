@@ -125,12 +125,13 @@ The caller's phone number isn't in the logs, so it can't be used. Neither link f
 | `j` / `k` (or ↓ / ↑) | Move down / up the list. With a call open, step the detail panel to the next or previous call. |
 | `Ctrl+D` / `Ctrl+U` | Page down / up |
 | `gg` / `G` | Jump to the first / last row |
+| `Ctrl+R` | Reload the calls (instead of the page). `Cmd+R` and `Ctrl+Shift+R` still reload the page. |
 | `Enter` | Open the highlighted call, or fold/unfold a result row |
 | `Space` | Same as Enter; on a run inside an open result, collapses that result |
 | `←` / `→` (or `h` / `l`) | With a call open: make the metrics or transcript pane active (outlined). `Tab` toggles between them; clicking a pane also activates it. |
 | `↑` / `↓` | With a pane active: scroll it (`Shift` or `Page Up`/`Page Down` for a page). With no pane active: step to the previous/next call. |
 | `Esc` | Close the detail panel or the open menu |
-| `/` | Focus search |
+| `/` | Focus search. `Enter` in the search box jumps to the first result, so `j` / `k` carry on from there. |
 | `?` | Show all shortcuts |
 
 ### Saved views

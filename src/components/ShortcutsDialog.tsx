@@ -2,12 +2,13 @@ const SHORTCUTS: [string[], string][] = [
   [['j', 'k'], 'Move down / up (with a call open, step to the next / previous call)'],
   [['Ctrl+D', 'Ctrl+U'], 'Page down / up'],
   [['g g', 'G'], 'Jump to the first / last row'],
+  [['Ctrl+R'], 'Reload the calls (keeps your filters, columns and open call)'],
   [['Enter'], 'Open the highlighted call, or fold/unfold a result'],
   [['Space'], 'Same as Enter; on a run inside a result, collapses it'],
   [['←', '→'], 'With a call open: make the metrics / transcript pane active (also h / l, or Tab to toggle)'],
   [['↑', '↓'], 'Scroll the active pane (Shift or Page Up/Down for a page); with no pane active, step calls'],
   [['Esc'], 'Close the detail panel or menu'],
-  [['/'], 'Search'],
+  [['/'], 'Search (Enter jumps to the first result)'],
   [['?'], 'Show this list'],
 ]
 
