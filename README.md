@@ -79,7 +79,7 @@ These set ordinary filters, so they appear as pills in the query bar, in the sid
   | `tool_call_failure:fail` | pass/fail metrics take `pass`, `fail` or `na` |
   | anything else | free-text search across every column and ID (call, run, result, scenario, Cekura agent); `*` works as a wildcard here too |
 
-  Field names are short forms of the column names (`agent`, `provider_agent`, `branch`, `result`, `scenario`, `ended_reason`…); metrics use their name in snake_case. Searching a result ID unfolds that result.
+  Field names are short forms of the column names (`agent`, `provider_agent`, `branch`, `result`, `scenario`, `ended_reason`…); metrics use their name in snake_case, and dynamic variables use `dv.<name>`. Searching a result ID unfolds that result.
 - **CSV:** exports the filtered rows with the visible columns, plus Cekura and provider links.
 
 Metrics that Cekura skipped (trigger not met, or `VALID_SKIP`) show as **N/A**. Cekura's own list reports them as passed, so pass rates here can be lower than in the dashboard.
@@ -91,6 +91,12 @@ With **Group by result** on, runs from the same result fold under a result row, 
 ### Provider agent and branch
 
 **Provider agent** shows the ElevenLabs or Retell `agent_id` that handled each call or run (the **Agent** column is the Cekura agent), and **Branch (11Labs)** shows the ElevenLabs `branch_id`; add them from **Columns**. Branches for production ElevenLabs calls need a large extra request per call (about 250KB), so they're only fetched while the Branch column is shown or used in a filter or sort; hide the column to skip that on long time ranges.
+
+### Dynamic variables
+
+Click **Load dynamic variables** above the table to load each call's ElevenLabs or Retell dynamic variables (business, location, caller number, mode, opening hours, feature flags…). Each variable becomes a column under **Dynamic variables** in **Columns**, and a query field with a `dv.` prefix, e.g. `dv.mode:demo`, `dv.original_incoming_phone_number:+1620*` or `-dv.client_id:*`. Free-text search covers their values too, so pasting a phone number finds the call.
+
+They add 5–25KB per call, so like branches they're only fetched when you ask, or while a variable column is shown, filtered, sorted or searched on (a saved view that uses one loads them automatically). Credentials (`secret__*`, auth tokens) and long blobs such as the knowledge base or service catalog are left out. Simulation runs and 11Labs-only rows get them as well.
 
 ### Call detail
 

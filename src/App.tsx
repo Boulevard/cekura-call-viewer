@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, fetchCallBranches, getByProviderIds, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
-import { conversationToCallLog, getConversationAsCallLog, listConversations } from './elevenlabs'
-import { buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
+import { ApiError, fetchCallBranches, fetchCallVariables, fetchRunVariables, getByProviderIds, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
+import { conversationToCallLog, getConversationAsCallLog, getRawConversation, listConversations } from './elevenlabs'
+import { isVariableKey, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
 import { load as loadStored, save, usePersistentState } from './storage'
@@ -326,6 +326,53 @@ export default function App() {
     }, ctrl.signal).catch(() => {}).finally(() => setBranchProgress(null))
     return () => ctrl.abort()
   }, [needsBranch, meta, settings])
+
+  // Dynamic variables add 5-25KB per call, so like branches they're only fetched once asked for
+  // or while a variable column is shown, filtered, sorted or searched on.
+  const [wantVariables, setWantVariables] = useState(false)
+  const [variableProgress, setVariableProgress] = useState<{ done: number; total: number } | null>(null)
+  const needsVariables = wantVariables || /\bdv\./i.test(search) ||
+    view.visible.some(isVariableKey) || view.filters.some((f) => isVariableKey(f.col)) || view.sort.some((s) => isVariableKey(s.col))
+  useEffect(() => {
+    if (!needsVariables || !meta) return
+    const pending = callsRef.current.filter((c) => c.variables === undefined)
+    if (pending.length === 0) return
+    const wanted = new Set(pending.map((c) => c.uid))
+    const ctrl = new AbortController()
+    let done = 0
+    setVariableProgress({ done, total: pending.length })
+    const apply = (found: Map<string, Record<string, string>>) => {
+      const hits = [...found].filter(([uid]) => wanted.has(uid))
+      if (hits.length === 0 || ctrl.signal.aborted) return
+      done += hits.length
+      setVariableProgress({ done, total: pending.length })
+      const byUid = new Map(hits)
+      setCalls((prev) => prev.map((c) => (byUid.has(c.uid) ? { ...c, variables: byUid.get(c.uid) } : c)))
+    }
+    const prefixed = (prefix: string) => (found: Map<number, Record<string, string>>) =>
+      apply(new Map([...found].map(([id, v]) => [`${prefix}:${id}`, v])))
+    const callIds = pending.filter((c) => c.source === 'call').map((c) => c.id)
+    const resultIds = [...new Set(pending.flatMap((c) => (c.sim ? [c.sim.resultId] : [])))]
+    // 11Labs-only rows have no Cekura copy, so their variables come from the conversation itself.
+    const elRows = pending.filter((c) => c.source === 'el')
+    const fromElevenLabs = async () => {
+      let next = 0
+      const worker = async () => {
+        while (next < elRows.length && !ctrl.signal.aborted) {
+          const c = elRows[next++]
+          const raw = await getRawConversation(c.call_id).catch(() => null)
+          apply(new Map([[c.uid, slimVariables(raw?.conversation_initiation_client_data?.dynamic_variables)]]))
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, elRows.length) }, worker))
+    }
+    Promise.all([
+      callIds.length && fetchCallVariables(settings, meta.projectId, callIds, meta, prefixed('call'), ctrl.signal),
+      resultIds.length && fetchRunVariables(settings, meta.projectId, resultIds, prefixed('run'), ctrl.signal),
+      elRows.length && fromElevenLabs(),
+    ]).catch(() => {}).finally(() => { if (!ctrl.signal.aborted) setVariableProgress(null) })
+    return () => { ctrl.abort(); setVariableProgress(null) }
+  }, [needsVariables, meta, settings])
   const colMap = useMemo(() => new Map(model.columns.map((c) => [c.key, c])), [model.columns])
 
   // One-time: agent, provider agent, branch and ended reason left the default view after views were
@@ -673,6 +720,13 @@ export default function App() {
                   </span>
                 )}
                 {branchProgress && <span className="branch-progress">Loading 11Labs branches {branchProgress.done}/{branchProgress.total}…</span>}
+                {variableProgress && <span className="branch-progress">Loading dynamic variables {variableProgress.done}/{variableProgress.total}…</span>}
+                {meta && !needsVariables && !variableProgress && calls.some((c) => c.variables === undefined) && (
+                  <button className="link" onClick={() => setWantVariables(true)}
+                    title="Load each call's ElevenLabs / Retell dynamic variables as columns you can filter, sort and search on">
+                    Load dynamic variables
+                  </button>
+                )}
                 {!!meta?.sims && !SIM_COLUMNS.some((k) => view.visible.includes(k)) && (
                   <button className="link" onClick={() => setView((v) => ({ ...v, visible: [...v.visible, ...SIM_COLUMNS] }))}>Show result & scenario columns</button>
                 )}
