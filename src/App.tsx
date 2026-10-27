@@ -487,6 +487,17 @@ export default function App() {
     setCursorId(display[i].key)
   }, [display, selectedId, cursorId, select])
 
+  // Enter in the query bar puts the cursor on the first result, once the new filters have applied.
+  const [jumpRequest, setJumpRequest] = useState(0)
+  useEffect(() => {
+    if (!jumpRequest) return
+    if (display.length) {
+      setCursorId(display[0].key)
+      document.querySelector('.table-scroll')?.scrollTo({ top: 0 })
+    }
+    setJumpRequest(0)
+  }, [jumpRequest, display])
+
   // Which detail pane (metrics or transcript/data) the arrow keys scroll; none means they step calls.
   const [detailPane, setDetailPane] = useState<DetailPane | null>(null)
   const paneEls = useRef<Record<DetailPane, HTMLElement | null>>({ metrics: null, main: null })
@@ -498,6 +509,13 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
+      // Ctrl+R reloads the calls rather than the page (which would throw away everything loaded),
+      // even from the search box. Cmd+R on a Mac and Ctrl+Shift+R still reload the page.
+      if (e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey && e.key === 'r') {
+        e.preventDefault()
+        loadRef.current()
+        return
+      }
       if (t.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.altKey) return
       // Let open popovers and modals handle their own keys (Esc closes them, not the detail panel).
       if (document.querySelector('.popover, .modal')) return
@@ -699,7 +717,7 @@ export default function App() {
 
           <div className="table-card">
             <div className="table-card-head">
-              <QueryBar ref={searchRef} columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
+              <QueryBar ref={searchRef} onSubmit={() => setJumpRequest((n) => n + 1)} columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
                 facetRowsFor={facetRowsFor}
                 onChange={(filters, freeText) => { if (filters) setView((v) => ({ ...v, filters })); setSearch(freeText) }} />
             </div>
