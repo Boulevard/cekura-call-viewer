@@ -383,6 +383,87 @@ export async function fetchCallBranches(
   await Promise.all(Array.from({ length: Math.min(3, batches.length) }, worker))
 }
 
+// ---- Dynamic variables ----------------------------------------------------------------------
+
+// Credentials aren't something to filter on, and shouldn't sit in memory or end up in a CSV.
+const SECRET_VARIABLE = /^secret__|auth_token|token$|password/i
+// Longer values are blobs (knowledge base, service catalogs, capabilities JSON) that make poor filters.
+const MAX_VARIABLE_LENGTH = 200
+
+export function slimVariables(...sources: unknown[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue
+    for (const [k, raw] of Object.entries(src as Record<string, unknown>)) {
+      if (SECRET_VARIABLE.test(k) || raw == null) continue
+      const v = typeof raw === 'string' ? raw.trim() : JSON.stringify(raw)
+      if (!v || v === 'None' || v.length > MAX_VARIABLE_LENGTH) continue
+      out[k] = v
+    }
+  }
+  return out
+}
+
+const VARIABLE_BATCH = 50
+
+/** Dynamic variables for call logs, in batches; `onBatch` gets each batch's results as they land. */
+export async function fetchCallVariables(
+  settings: Settings,
+  projectId: number,
+  ids: number[],
+  range: { from: string; to: string },
+  onBatch: (found: Map<number, Record<string, string>>) => void,
+  signal?: AbortSignal,
+) {
+  const batches: number[][] = []
+  for (let i = 0; i < ids.length; i += VARIABLE_BATCH) batches.push(ids.slice(i, i + VARIABLE_BATCH))
+  let next = 0
+  async function worker() {
+    while (next < batches.length) {
+      const batch = batches[next++]
+      const res = await get<Page<{ id: number; dynamic_variables?: unknown }>>(settings, '/observability/v2/call-logs/', {
+        project_id: projectId, call_ids: batch.join(','), page_size: batch.length, ql: '{id,dynamic_variables}',
+        timestamp_from: range.from, timestamp_to: range.to,
+      }, signal)
+      const found = new Map<number, Record<string, string>>(batch.map((id) => [id, {}]))
+      for (const r of res.results) found.set(r.id, slimVariables(r.dynamic_variables))
+      onBatch(found)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker))
+}
+
+/** Dynamic variables for simulation runs, which keep them in the provider metadata. */
+export async function fetchRunVariables(
+  settings: Settings,
+  projectId: number,
+  resultIds: number[],
+  onBatch: (found: Map<number, Record<string, string>>) => void,
+  signal?: AbortSignal,
+) {
+  type Row = { id: number; metadata?: { retell_llm_dynamic_variables?: unknown; collected_dynamic_variables?: unknown; conversation_initiation_client_data?: { dynamic_variables?: unknown } } }
+  const chunks: number[][] = []
+  for (let i = 0; i < resultIds.length; i += RESULTS_PER_RUN_QUERY) chunks.push(resultIds.slice(i, i + RESULTS_PER_RUN_QUERY))
+  let next = 0
+  async function worker() {
+    while (next < chunks.length) {
+      const chunk = chunks[next++]
+      for (let page = 1; ; page++) {
+        const res = await get<Page<Row>>(settings, '/test_framework/v2/runs/', {
+          project_id: projectId, result_ids: chunk.join(','), page, page_size: PAGE_SIZE,
+          ql: '{id,metadata{retell_llm_dynamic_variables,collected_dynamic_variables,conversation_initiation_client_data}}',
+        }, signal)
+        onBatch(new Map(res.results.map((r) => [r.id, slimVariables(
+          r.metadata?.retell_llm_dynamic_variables, r.metadata?.collected_dynamic_variables,
+          r.metadata?.conversation_initiation_client_data?.dynamic_variables,
+        )])))
+        if (!res.next) break
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker))
+}
+
 // ---- Projects -------------------------------------------------------------------------------
 
 export interface Project {

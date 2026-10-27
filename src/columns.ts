@@ -26,7 +26,10 @@ export interface Row {
   search: string
 }
 
-export const GROUPS = ['Call', 'Simulation', 'Binary metrics', 'Enum metrics', 'Numeric metrics'] as const
+export const GROUPS = ['Call', 'Simulation', 'Binary metrics', 'Enum metrics', 'Numeric metrics', 'Dynamic variables'] as const
+
+/** Dynamic variable columns are keyed `dv:<variable name>`. */
+export const isVariableKey = (key: string) => key.startsWith('dv:')
 
 const BASE_COLUMNS: Column[] = [
   { key: 'call_id', label: 'Call / conversation ID', group: 'Call', kind: 'text', width: 280 },
@@ -158,6 +161,7 @@ export const BRANCH_PENDING = '…loading'
 
 export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] } {
   const metricCols = new Map<string, Column>()
+  const variableCols = new Map<string, Column>()
 
   const rows = calls.map((call): Row => {
     const v: Record<string, CellValue> = {
@@ -222,6 +226,11 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
         v[k] = n
       }
     }
+    for (const [name, val] of Object.entries(call.variables ?? {})) {
+      const key = `dv:${name}`
+      if (!variableCols.has(key)) variableCols.set(key, { key, label: name, group: 'Dynamic variables', kind: 'category', width: 170 })
+      v[key] = val
+    }
     // Search covers every column as displayed, plus a few raw fields, one field per segment so a
     // query (or a * wildcard) can't match across two columns.
     // Pass/fail metrics render as icons, so their words are left out; otherwise "fail" would
@@ -235,7 +244,8 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
   })
 
   const sortedMetricCols = [...metricCols.values()].sort((a, b) => a.label.localeCompare(b.label))
-  return { columns: [...BASE_COLUMNS, ...sortedMetricCols], rows }
+  const sortedVariableCols = [...variableCols.values()].sort((a, b) => a.label.localeCompare(b.label))
+  return { columns: [...BASE_COLUMNS, ...sortedMetricCols, ...sortedVariableCols], rows }
 }
 
 export function formatCell(col: Column, v: CellValue): string {

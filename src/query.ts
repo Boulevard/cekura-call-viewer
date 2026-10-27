@@ -5,7 +5,7 @@
  *   agent:"AI Receptionist - 11Labs prod"   -success:fail   duration:>60   time:[2026-10-16T09:00 TO 2026-10-16T12:00]
  *   ended_reason:(user_hangup OR agent_hangup)   business_name:*salon*   branch:*   -feedback:*   free text
  */
-import { formatDuration, parseDuration, type CellValue, type Column } from './columns'
+import { formatDuration, isVariableKey, parseDuration, type CellValue, type Column } from './columns'
 import type { Filter } from './filters'
 
 // Friendlier names for base columns whose labels don't slug nicely.
@@ -45,8 +45,10 @@ export function buildFieldIndex(columns: Column[]): FieldIndex {
     fieldOf.set(c.key, field)
   }
   // Base columns first so they keep the short names when a metric slugs to the same thing.
-  for (const c of columns) if (c.metricId == null && c.kind !== 'links') add(c, ALIASES[c.key] ?? slug(c.label))
+  // Dynamic variables get a `dv.` prefix, since many share names with columns or metrics.
+  for (const c of columns) if (c.metricId == null && c.kind !== 'links' && !isVariableKey(c.key)) add(c, ALIASES[c.key] ?? slug(c.label))
   for (const c of columns) if (c.metricId != null) add(c, slug(c.label))
+  for (const c of columns) if (isVariableKey(c.key)) add(c, `dv.${slug(c.label)}`)
   return { byField, fieldOf }
 }
 

@@ -51,6 +51,11 @@ export interface CallLog {
   providerAgentId?: string | null
   /** ElevenLabs branch; only ElevenLabs calls have one, and production calls get it lazily. */
   branchId?: string | null
+  /**
+   * The ElevenLabs / Retell dynamic variables, trimmed to the small values worth filtering on.
+   * Undefined until fetched, since they're only loaded while a variable column is in use.
+   */
+  variables?: Record<string, string> | null
   /** Loaded only because its call ID was pasted into the IDs box; dropped when that's cleared. */
   pinned?: boolean
   id: number
