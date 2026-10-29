@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, fetchCallBranches, fetchCallVariables, fetchRunVariables, getByProviderIds, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
-import { conversationToCallLog, getConversationAsCallLog, getRawConversation, listConversations } from './elevenlabs'
+import { conversationToCallLog, getConversationAsCallLog, getConversationVariables, listConversations } from './elevenlabs'
 import { isVariableKey, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
@@ -229,7 +229,7 @@ export default function App() {
     const elP = q.elevenLabs
       ? agentsP.then(async (agents) => {
         const [conversations, known] = await Promise.all([
-          listConversations([...new Set([...agents.elevenLabs.keys(), ...(q.elevenLabsAgents ?? [])])], Date.parse(range.from), Date.parse(range.to), (n) => report('el')(n, n), ctrl.signal),
+          listConversations([...new Set([...agents.elevenLabs.keys(), ...(q.elevenLabsAgents ?? [])])].filter((id) => !q.elevenLabsSkip?.includes(id)), Date.parse(range.from), Date.parse(range.to), (n) => report('el')(n, n), ctrl.signal),
           listKnownProviderIds(settings, listQuery, { calls: !withCalls, sims: !withSims }, ctrl.signal),
         ])
         return { conversations, known, agents }
@@ -358,16 +358,21 @@ export default function App() {
     const resultIds = [...new Set(pending.flatMap((c) => (c.sim ? [c.sim.resultId] : [])))]
     // 11Labs-only rows have no Cekura copy, so their variables come from the conversation itself.
     const elRows = pending.filter((c) => c.source === 'el')
+    // That's one request per conversation, so results are applied in batches rather than one by one.
     const fromElevenLabs = async () => {
       let next = 0
+      let batch = new Map<string, Record<string, string>>()
+      const flush = () => { if (batch.size) { apply(batch); batch = new Map() } }
       const worker = async () => {
         while (next < elRows.length && !ctrl.signal.aborted) {
           const c = elRows[next++]
-          const raw = await getRawConversation(c.call_id).catch(() => null)
-          apply(new Map([[c.uid, slimVariables(raw?.conversation_initiation_client_data?.dynamic_variables)]]))
+          const dv = await getConversationVariables(c.call_id, ctrl.signal).catch(() => null)
+          batch.set(c.uid, slimVariables(dv))
+          if (batch.size >= 25) flush()
         }
       }
-      await Promise.all(Array.from({ length: Math.min(4, elRows.length) }, worker))
+      await Promise.all(Array.from({ length: Math.min(8, elRows.length) }, worker))
+      flush()
     }
     Promise.all([
       callIds.length && fetchCallVariables(settings, meta.projectId, callIds, meta, prefixed('call'), ctrl.signal),
@@ -626,8 +631,8 @@ export default function App() {
           })}
         </div>
         {query.elevenLabs && (
-          <ElevenLabsAgents projectAgents={projectElAgents} extra={query.elevenLabsAgents ?? []}
-            onChange={(elevenLabsAgents) => { const q = { ...query, elevenLabsAgents }; setQuery(q); load(q) }} />
+          <ElevenLabsAgents projectAgents={projectElAgents} value={{ extra: query.elevenLabsAgents ?? [], skip: query.elevenLabsSkip ?? [] }}
+            onChange={({ extra, skip }) => { const q = { ...query, elevenLabsAgents: extra, elevenLabsSkip: skip }; setQuery(q); load(q) }} />
         )}
         <select value={query.range} title="Time range" onChange={(e) => {
           const range = e.target.value

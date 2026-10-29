@@ -152,6 +152,15 @@ export function getRawConversation(id: string): Promise<Record<string, any>> {
   return p
 }
 
+/**
+ * A conversation's dynamic variables. Bulk loads skip the cache, since each conversation is
+ * ~130KB and holding hundreds of them just for their variables would bloat memory.
+ */
+export async function getConversationVariables(id: string, signal?: AbortSignal): Promise<unknown> {
+  const raw = await (rawCache.get(id) ?? elGet<Record<string, any>>(`/conversations/${encodeURIComponent(id)}`, {}, signal))
+  return raw.conversation_initiation_client_data?.dynamic_variables
+}
+
 export const audioUrl = (id: string) => `${BASE}/conversations/${encodeURIComponent(id)}/audio`
 
 /** ElevenLabs' own evaluation, shaped like Cekura metrics so the metrics pane can show it. */
