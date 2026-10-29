@@ -16,6 +16,8 @@ export interface ViewQuery {
   elevenLabs?: boolean
   /** ElevenLabs agents to include beyond the ones the project's Cekura agents point to. */
   elevenLabsAgents?: string[]
+  /** The project's own ElevenLabs agents to leave out. */
+  elevenLabsSkip?: string[]
 }
 
 export interface SavedView {
@@ -49,6 +51,7 @@ export function isModified(saved: SavedView, view: ViewState, query: ViewQuery):
   return q.projectId !== query.projectId || q.agentId !== query.agentId || q.range !== query.range ||
     (q.source ?? 'calls') !== (query.source ?? 'calls') || !!q.elevenLabs !== !!query.elevenLabs ||
     [...(q.elevenLabsAgents ?? [])].sort().join() !== [...(query.elevenLabsAgents ?? [])].sort().join() ||
+    [...(q.elevenLabsSkip ?? [])].sort().join() !== [...(query.elevenLabsSkip ?? [])].sort().join() ||
     (q.range === 'custom' && (q.from !== query.from || q.to !== query.to))
 }
 

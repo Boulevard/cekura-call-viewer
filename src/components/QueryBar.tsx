@@ -268,7 +268,7 @@ function suggest(target: CompletionTarget, index: ReturnType<typeof buildFieldIn
     .map(({ v, n, l }) => ({
       insert: col.kind === 'binary' || v == null ? l : quoteValue(v),
       label: v == null && col.kind !== 'binary' ? '(empty)' : l,
-      hint: `${n.toLocaleString()} rows`,
+      hint: `${n.toLocaleString()} row${n === 1 ? '' : 's'}`,
       kind: 'value' as const,
     }))
   if (!q && !target.inList) out.push({ insert: '*', label: '*', hint: 'has any value', kind: 'value' })

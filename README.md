@@ -42,7 +42,7 @@ Simulation runs are found through their results (test-suite executions) created 
 
 Cekura doesn't import every ElevenLabs call (manual test calls to dev branches often go missing, and recent calls show up a few minutes late). The **11Labs** toggle loads the ElevenLabs conversations for the project's ElevenLabs agents in the time range and adds the ones Cekura doesn't have, tagged `11L` (Source: `11Labs only`). Turn Calls and Simulations off to see only those.
 
-By default it scans the ElevenLabs agents that the project's Cekura agents point to. To include any other agent in the ElevenLabs workspace (a staging build, or a new agent Cekura isn't set up for), use the **11Labs: Agents** menu that appears next to the toggles and tick it; search works on names and agent IDs, and the choice is saved with the view. Filter on `branch:` to narrow to one branch.
+By default it scans the ElevenLabs agents that the project's Cekura agents point to. To include any other agent in the ElevenLabs workspace (a staging build, or a new agent Cekura isn't set up for), use the **11Labs: Agents** menu that appears next to the toggles and tick it. You can also untick the project's agents, or hover an agent and click **Only** to load just that one; with Calls and Simulations off, that shows only that agent's conversations. Search works on names and agent IDs, and the choice is saved with the view. Filter on `branch:` to narrow to one branch.
 
 Their detail view comes from ElevenLabs: transcript, tool calls, recording, and ElevenLabs' own evaluation criteria and data collection in place of Cekura metrics. They have no Cekura link or metric columns. Any ElevenLabs call, in Cekura or not, also gets an **ElevenLabs** tab in its detail view with the raw conversation from ElevenLabs.
 
@@ -98,7 +98,7 @@ With **Group by result** on, runs from the same result fold under a result row, 
 
 Click **Load dynamic variables** above the table to load each call's ElevenLabs or Retell dynamic variables (business, location, caller number, mode, opening hours, feature flags…). Each variable becomes a column under **Dynamic variables** in **Columns**, and a query field with a `dv.` prefix, e.g. `dv.mode:demo`, `dv.original_incoming_phone_number:+1620*` or `-dv.client_id:*`. Free-text search covers their values too, so pasting a phone number finds the call.
 
-They add 5–25KB per call, so like branches they're only fetched when you ask, or while a variable column is shown, filtered, sorted or searched on (a saved view that uses one loads them automatically). Credentials (`secret__*`, auth tokens) and long blobs such as the knowledge base or service catalog are left out. Simulation runs and 11Labs-only rows get them as well.
+They add 5–25KB per call, so like branches they're only fetched when you ask, or while a variable column is shown, filtered, sorted or searched on (a saved view that uses one loads them automatically). Credentials (`secret__*`, auth tokens) and long blobs such as the knowledge base or service catalog are left out. Simulation runs and 11Labs-only rows (including ones from agents added in the **11Labs: Agents** menu) get them as well; those come from ElevenLabs one conversation at a time, so a few hundred take about 10 seconds.
 
 ### Call detail
 
