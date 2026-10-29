@@ -16,6 +16,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
+import { ElevenLabsAgents } from './components/ElevenLabsAgents'
 import { AgentFilter, BusinessFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
@@ -147,6 +148,7 @@ export default function App() {
     setQuery(q)
     loadRef.current(q)
   }, [projects, query, setQuery])
+  const [projectElAgents, setProjectElAgents] = useState<Map<string, { id: number; name: string }>>(new Map())
   const [branchProgress, setBranchProgress] = useState<{ done: number; total: number } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -221,12 +223,13 @@ export default function App() {
     // Only used to label rows (and find the 11Labs agents); a failure here shouldn't block the list.
     const agentsP: Promise<ProviderAgents> = listProviderAgents(settings, q.projectId)
       .catch(() => ({ byCekuraAgent: new Map(), elevenLabs: new Map() }))
+    agentsP.then((a) => { if (abortRef.current === ctrl) setProjectElAgents(a.elevenLabs) })
     // ElevenLabs conversations, plus the provider IDs of whatever Cekura has that isn't being
     // loaded, so only conversations Cekura never imported get added.
     const elP = q.elevenLabs
       ? agentsP.then(async (agents) => {
         const [conversations, known] = await Promise.all([
-          listConversations([...agents.elevenLabs.keys()], Date.parse(range.from), Date.parse(range.to), (n) => report('el')(n, n), ctrl.signal),
+          listConversations([...new Set([...agents.elevenLabs.keys(), ...(q.elevenLabsAgents ?? [])])], Date.parse(range.from), Date.parse(range.to), (n) => report('el')(n, n), ctrl.signal),
           listKnownProviderIds(settings, listQuery, { calls: !withCalls, sims: !withSims }, ctrl.signal),
         ])
         return { conversations, known, agents }
@@ -622,6 +625,10 @@ export default function App() {
             )
           })}
         </div>
+        {query.elevenLabs && (
+          <ElevenLabsAgents projectAgents={projectElAgents} extra={query.elevenLabsAgents ?? []}
+            onChange={(elevenLabsAgents) => { const q = { ...query, elevenLabsAgents }; setQuery(q); load(q) }} />
+        )}
         <select value={query.range} title="Time range" onChange={(e) => {
           const range = e.target.value
           if (range === 'custom') {

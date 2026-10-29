@@ -42,6 +42,8 @@ Simulation runs are found through their results (test-suite executions) created 
 
 Cekura doesn't import every ElevenLabs call (manual test calls to dev branches often go missing, and recent calls show up a few minutes late). The **11Labs** toggle loads the ElevenLabs conversations for the project's ElevenLabs agents in the time range and adds the ones Cekura doesn't have, tagged `11L` (Source: `11Labs only`). Turn Calls and Simulations off to see only those.
 
+By default it scans the ElevenLabs agents that the project's Cekura agents point to. To include any other agent in the ElevenLabs workspace (a staging build, or a new agent Cekura isn't set up for), use the **11Labs: Agents** menu that appears next to the toggles and tick it; search works on names and agent IDs, and the choice is saved with the view. Filter on `branch:` to narrow to one branch.
+
 Their detail view comes from ElevenLabs: transcript, tool calls, recording, and ElevenLabs' own evaluation criteria and data collection in place of Cekura metrics. They have no Cekura link or metric columns. Any ElevenLabs call, in Cekura or not, also gets an **ElevenLabs** tab in its detail view with the raw conversation from ElevenLabs.
 
 ### Layout
