@@ -557,6 +557,7 @@ table.mini tr.bad td { color: var(--fail); }
 .quick-exclude { flex-shrink: 0; font-size: 12px; visibility: hidden; }
 .quick-item:hover .quick-exclude { visibility: visible; }
 .quick-item.excluded .quick-exclude { display: none; }
+.quick-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 8px 6px 4px; }
 .quick-count { flex-shrink: 0; color: var(--muted-2); font-size: 12px; font-variant-numeric: tabular-nums; }
 .quick-empty { padding: 10px 6px; }
 .quick-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 6px; padding: 7px 4px 2px; }

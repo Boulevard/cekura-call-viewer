@@ -63,6 +63,26 @@ export async function listConversations(
   return all
 }
 
+let agentsCache: Promise<{ id: string; name: string }[]> | null = null
+
+/** Every agent in the ElevenLabs workspace, for picking ones no Cekura agent points to. */
+export function listAgents(): Promise<{ id: string; name: string }[]> {
+  if (!agentsCache) {
+    agentsCache = (async () => {
+      const out: { id: string; name: string }[] = []
+      let cursor: string | undefined
+      do {
+        const page = await elGet<{ agents: { agent_id: string; name: string }[]; next_cursor?: string; has_more: boolean }>('/agents', { page_size: 100, cursor })
+        out.push(...page.agents.map((a) => ({ id: a.agent_id, name: a.name })))
+        cursor = page.has_more ? page.next_cursor : undefined
+      } while (cursor)
+      return out
+    })()
+    agentsCache.catch(() => { agentsCache = null })
+  }
+  return agentsCache
+}
+
 const pad = (n: number) => String(n).padStart(2, '0')
 const duration = (secs: number) => `${pad(Math.floor(secs / 60))}:${pad(Math.round(secs % 60))}`
 
