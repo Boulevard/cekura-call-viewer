@@ -17,20 +17,13 @@ import { ViewsMenu } from './components/ViewsMenu'
 import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
 import { ElevenLabsAgents } from './components/ElevenLabsAgents'
+import { PRESETS, RangePicker } from './components/RangePicker'
 import { AgentFilter, BusinessFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
 import { fetchViewsFile, isModified, loadSavedViews, newViewId, writeViewsFile, type DataSource, type SavedView, type ViewQuery } from './views'
 
-const PRESETS = [
-  { key: '1h', label: '1h', title: 'Last hour', ms: 3600e3 },
-  { key: '6h', label: '6h', title: 'Last 6 hours', ms: 6 * 3600e3 },
-  { key: '24h', label: '24h', title: 'Last 24 hours', ms: 24 * 3600e3 },
-  { key: '3d', label: '3d', title: 'Last 3 days', ms: 3 * 86400e3 },
-  { key: '7d', label: '7d', title: 'Last 7 days', ms: 7 * 86400e3 },
-  { key: '30d', label: '30d', title: 'Last 30 days', ms: 30 * 86400e3 },
-]
 const MAX_RANGE_MS = 33 * 86400e3
 // Sidebar filter sections shown until the user picks their own.
 const DEFAULT_FACETS = ['source', 'success', 'agent_name', 'call_ended_reason']
@@ -67,6 +60,11 @@ function toggleSource(q: Query, key: 'calls' | 'sims' | 'el'): Query {
   return { ...q, source: calls && sims ? 'both' : calls ? 'calls' : sims ? 'sims' : 'none', elevenLabs: el }
 }
 const DEFAULT_VIEW: ViewState = { visible: DEFAULT_VISIBLE, filters: [], sort: [{ col: 'timestamp', dir: 'desc' }], widths: {} }
+
+/** For seeding the custom range inputs; falls back to the last day if the saved range is unusable. */
+function safeRange(q: Query): { from: string; to: string } {
+  try { return resolveRange(q) } catch { return resolveRange({ ...q, range: '24h' }) }
+}
 
 function resolveRange(q: Query): { from: string; to: string } {
   const preset = PRESETS.find((p) => p.key === q.range)
@@ -629,33 +627,14 @@ export default function App() {
               </button>
             )
           })}
+          {/* Sits right after the 11Labs toggle it belongs to. */}
+          {query.elevenLabs && (
+            <ElevenLabsAgents projectAgents={projectElAgents} value={{ extra: query.elevenLabsAgents ?? [], skip: query.elevenLabsSkip ?? [] }}
+              onChange={({ extra, skip }) => { const q = { ...query, elevenLabsAgents: extra, elevenLabsSkip: skip }; setQuery(q); load(q) }} />
+          )}
         </div>
-        {query.elevenLabs && (
-          <ElevenLabsAgents projectAgents={projectElAgents} value={{ extra: query.elevenLabsAgents ?? [], skip: query.elevenLabsSkip ?? [] }}
-            onChange={({ extra, skip }) => { const q = { ...query, elevenLabsAgents: extra, elevenLabsSkip: skip }; setQuery(q); load(q) }} />
-        )}
-        <select value={query.range} title="Time range" onChange={(e) => {
-          const range = e.target.value
-          if (range === 'custom') {
-            const r = meta ?? resolveRange(query)
-            const local = (iso: string) => new Date(Date.parse(iso) - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-            setQuery({ ...query, range, from: query.from || local(r.from), to: query.to || local(r.to) })
-            return
-          }
-          const q = { ...query, range }
-          setQuery(q)
-          load(q)
-        }}>
-          {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.title}</option>)}
-          <option value="custom">Custom range…</option>
-        </select>
-        {query.range === 'custom' && (
-          <>
-            <input type="datetime-local" value={query.from} onChange={(e) => setQuery({ ...query, from: e.target.value })} />
-            <span className="muted">→</span>
-            <input type="datetime-local" value={query.to} onChange={(e) => setQuery({ ...query, to: e.target.value })} />
-          </>
-        )}
+        <RangePicker range={query.range} from={query.from} to={query.to} current={meta ?? safeRange(query)}
+          onChange={(r) => { const q = { ...query, ...r }; setQuery(q); load(q) }} />
         <button className="btn primary icon" onClick={() => load()} disabled={!!progress} title="Reload">{progress ? '…' : '↻'}</button>
         {progress && <button className="btn ghost" onClick={() => { abortRef.current?.abort(); setProgress(null) }}>Cancel</button>}
         <span className="toolbar-sep" />

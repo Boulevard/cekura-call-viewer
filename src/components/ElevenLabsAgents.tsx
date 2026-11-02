@@ -75,9 +75,9 @@ export function ElevenLabsAgents({ projectAgents, value, onChange }: Props) {
 
   return (
     <div className="popover-anchor">
-      <button className={`btn quick-btn ${customized ? 'active' : ''}`} title="Which ElevenLabs agents the 11Labs source loads"
+      <button className={`toggle el-agents ${customized ? 'on' : ''}`} title="Which ElevenLabs agents the 11Labs source loads"
         onClick={() => { setExtra(value.extra); setSkip(value.skip); setOpen(true) }}>
-        <span className="ellipsis">11Labs: {customized ? `${count} agent${count === 1 ? '' : 's'}` : 'Agents'}</span><span className="muted">▾</span>
+        {customized ? `${count} agent${count === 1 ? '' : 's'}` : 'Agents'}<span className="muted">▾</span>
       </button>
       {open && (
         <Popover onClose={close} className="quick-popover">
