@@ -29,8 +29,10 @@
   --sim-soft: rgba(167, 139, 250, 0.14);
   --result: #9ecbff;
   --result-soft: rgba(106, 169, 255, 0.13);
-  --row-hover: #161b25;
-  --row-sel: #1c2440;
+  --row-hover: #181d29;
+  /* Strong enough to find at a glance against the near-black table. */
+  --row-sel: #2a3576;
+  --row-cursor: #222a4a;
   --group: #161b26;
   --in-group: #11151c;
   --bar: #2a3142;
@@ -72,8 +74,9 @@
   --sim-soft: #f1e8ff;
   --result: #1d4ed8;
   --result-soft: #e6eeff;
-  --row-hover: #f8f8fe;
-  --row-sel: #eceeff;
+  --row-hover: #f6f7fc;
+  --row-sel: #dde1ff;
+  --row-cursor: #eef0ff;
   --group: #f4f5fa;
   --in-group: #fcfcfe;
   --bar: #e3e6ef;
@@ -174,7 +177,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 
 /* layout */
 .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-.toolbar { display: flex; align-items: center; gap: 6px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: nowrap; min-width: 0; }
+.toolbar { display: flex; align-items: center; gap: 6px; row-gap: 8px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; min-width: 0; }
 .toolbar > * { flex-shrink: 0; }
 .toolbar > .search { flex-shrink: 1; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; margin-right: 6px; letter-spacing: -0.01em; }
@@ -344,8 +347,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .tbody { position: relative; }
 .tr { display: grid; position: absolute; top: 0; left: 0; width: 100%; height: 38px; border-bottom: 1px solid var(--grid); cursor: pointer; }
 .tr:hover { background: var(--row-hover); }
-.tr.selected { background: var(--row-sel); }
-.tr.cursor { box-shadow: inset 3px 0 0 var(--accent); background: var(--row-hover); }
+.tr.selected { background: var(--row-sel); box-shadow: inset 4px 0 0 var(--accent); }
+.tr.cursor { box-shadow: inset 4px 0 0 var(--accent); background: var(--row-cursor); }
 .tr.cursor.selected { background: var(--row-sel); }
 .td { padding: 0 12px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .td.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
@@ -460,9 +463,14 @@ table.mini tr.bad td { color: var(--fail); }
 .expected-outcome { border: 1px solid var(--sim-soft); background: var(--sim-soft); border-radius: 9px; margin-bottom: 10px; padding: 2px 4px; }
 .eo-prompt { color: var(--muted); font-style: italic; }
 
-.source-toggles { display: inline-flex; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.source-toggles { display: inline-flex; border: 1px solid var(--border-2); border-radius: 8px; background: var(--surface); }
 .toggle { display: inline-flex; align-items: center; gap: 7px; background: transparent; border: 0; padding: 6px 11px 6px 9px; color: var(--muted); }
 .source-toggles .toggle + .toggle { border-left: 1px solid var(--border); }
+.source-toggles .popover-anchor { display: flex; align-self: stretch; border-left: 1px solid var(--border); }
+.toggle.el-agents { gap: 4px; padding-left: 9px; font-size: 12px; }
+/* Not overflow: hidden, which would clip the agents menu; the end buttons round themselves instead. */
+.source-toggles > .toggle:first-child { border-radius: 7px 0 0 7px; }
+.source-toggles > :last-child, .source-toggles > :last-child .toggle { border-radius: 0 7px 7px 0; }
 .toggle:hover { color: var(--text); }
 .toggle.on { background: var(--accent-soft); color: var(--accent-text); font-weight: 550; }
 .toggle-box { width: 14px; height: 14px; border: 1.5px solid var(--border-2); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; }
@@ -486,8 +494,11 @@ table.mini tr.bad td { color: var(--fail); }
 .branch-progress { white-space: nowrap; }
 
 /* Narrower windows: drop the labels that don't carry information before anything wraps. */
-@media (max-width: 1700px) {
+@media (max-width: 1900px) {
   .project-org, .project-sep { display: none; }
+}
+@media (max-width: 1750px) {
+  .brand-text, .export-text { display: none; }
 }
 @media (max-width: 1500px) {
   .brand-text, .export-text { display: none; }
@@ -543,6 +554,11 @@ table.mini tr.bad td { color: var(--fail); }
 /* toolbar quick filters */
 .toolbar-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; }
 .quick-btn { max-width: 230px; min-width: 0; }
+.range-btn { max-width: 290px; }
+.popover.range-popover { width: 300px; }
+.range-item { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.range-custom { display: flex; flex-direction: column; gap: 6px; padding: 2px 6px 8px; }
+.range-custom input { width: 100%; }
 .quick-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
 .quick-seg button { padding: 6px 11px; }
 .popover.quick-popover { width: 340px; padding: 8px; }
