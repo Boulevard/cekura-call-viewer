@@ -129,6 +129,8 @@ export default function App() {
 
   const [calls, setCalls] = useState<CallLog[]>([])
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null)
+  // An automatic refresh keeps the current counts on screen instead of the full loading bar.
+  const [quietLoad, setQuietLoad] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [meta, setMeta] = useState<{
     total: number; truncated: boolean; at: Date; from: string; to: string
@@ -189,7 +191,8 @@ export default function App() {
   }
 
   const cacheRef = useRef<LoadCache>({})
-  const load = useCallback(async (q: Query = query, pins?: { results?: number[]; calls?: string[] }, opts?: { fresh?: boolean }) => {
+  const lastLoadRef = useRef(0)
+  const load = useCallback(async (q: Query = query, pins?: { results?: number[]; calls?: string[] }, opts?: { fresh?: boolean; background?: boolean }) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -214,6 +217,7 @@ export default function App() {
     const cache = cacheRef.current
     for (const p of [cache.calls, cache.sims]) if (p) p.rows = p.rows.map((r) => current.get(r.uid) ?? r)
 
+    setQuietLoad(!!opts?.background)
     setProgress({ loaded: 0, total: 0 })
     const source = q.source ?? 'calls'
     const pinned = pins?.results ?? pinnedResultIds(viewRef.current.filters)
@@ -342,7 +346,21 @@ export default function App() {
         // one already fetched (on a cached row) is kept.
         branchId: c.source === 'sim' ? c.branchId ?? null : c.branchId !== undefined ? c.branchId : c.call_id?.startsWith('conv_') ? undefined : null,
       }))
-      setCalls([...withAgents, ...elRows])
+      // A reload (manual or automatic) brings fresh results, but what was loaded onto rows since
+      // (variables, analysis, branch) doesn't change for a call, so it's kept instead of refetched.
+      const carry = (c: CallLog): CallLog => {
+        const old = current.get(c.uid)
+        if (!old || old === c) return c
+        return {
+          ...c,
+          variables: c.variables ?? old.variables,
+          analysis: c.analysis ?? old.analysis,
+          branchId: c.branchId !== undefined ? c.branchId : old.branchId,
+          providerAgentId: c.providerAgentId ?? old.providerAgentId,
+        }
+      }
+      setCalls([...withAgents, ...elRows].map(carry))
+      lastLoadRef.current = Date.now()
       setMeta({
         elOnly: el && 'conversations' in el ? elRows.length : undefined,
         elError: el && 'error' in el ? el.error : undefined,
@@ -374,6 +392,24 @@ export default function App() {
   useEffect(() => {
     loadRef.current(shared?.query ? { ...DEFAULT_QUERY, ...shared.query } : undefined)
   }, [shared])
+
+  // Auto-refresh: a fresh reload every 5 minutes, checked every 30 seconds so it catches up right
+  // after the tab comes back into view. A custom range that's over won't change, so it's left alone.
+  const AUTO_REFRESH_MS = 5 * 60e3
+  const busyRef = useRef(false)
+  busyRef.current = !!progress
+  const queryRef = useRef(query)
+  queryRef.current = query
+  useEffect(() => {
+    if (!settings.autoRefresh) return
+    const id = setInterval(() => {
+      if (document.hidden || busyRef.current || !lastLoadRef.current || Date.now() - lastLoadRef.current < AUTO_REFRESH_MS) return
+      const q = queryRef.current
+      if (q.range === 'custom' && Date.parse(q.to) < Date.now() - AUTO_REFRESH_MS) return
+      loadRef.current(undefined, undefined, { fresh: true, background: true })
+    }, 30e3)
+    return () => clearInterval(id)
+  }, [settings.autoRefresh])
 
   const { viewed, mark: markViewed, clear: clearViewed } = useViewed()
   const model = useMemo(() => buildModel(calls, viewed), [calls, viewed])
@@ -900,18 +936,18 @@ export default function App() {
             </div>
             <div className="table-card-head sub">
               <div className="table-meta">
-                {progress ? (
+                {progress && !(quietLoad && meta) ? (
                   <span>Loading {progress.loaded.toLocaleString()} / {progress.total ? progress.total.toLocaleString() : '…'} {sourceLabel}
                     <span className="progress"><span style={{ width: `${progress.total ? (progress.loaded / progress.total) * 100 : 0}%` }} /></span>
                   </span>
                 ) : meta && (
-                  <span title={`${new Date(meta.from).toLocaleString()} → ${new Date(meta.to).toLocaleString()} · loaded ${meta.at.toLocaleTimeString()}`}>
+                  <span title={`${new Date(meta.from).toLocaleString()} → ${new Date(meta.to).toLocaleString()} · loaded ${meta.at.toLocaleTimeString()}${settings.autoRefresh ? ' · auto-refreshes every 5 minutes' : ''}`}>
                     <b>{sorted.length.toLocaleString()}</b> of {calls.length.toLocaleString()} {meta.sims == null ? (meta.calls == null ? 'conversations' : 'calls') : meta.calls == null ? 'runs' : 'rows'}
                     {meta.sims != null && <> · {meta.results?.toLocaleString()} result{meta.results === 1 ? '' : 's'}</>}
                     {meta.elOnly != null && (meta.calls != null || meta.sims != null) && <> · {meta.elOnly.toLocaleString()} 11Labs only</>}
                     {meta.elError && <span className="warn" title={meta.elError}> · 11Labs failed to load</span>}
                     {meta.truncated && <span className="warn" title="Narrow the range or raise the cap in Settings"> · capped at {calls.length.toLocaleString()}</span>}
-                    {' '}· loaded {meta.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    {' '}· {progress ? <span className="muted">refreshing…</span> : <>loaded {meta.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</>}
                   </span>
                 )}
                 {branchProgress && <span className="branch-progress">Loading 11Labs branches {branchProgress.done}/{branchProgress.total}…</span>}

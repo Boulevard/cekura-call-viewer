@@ -36,6 +36,13 @@ export function SettingsDialog({ settings, onSave, onClose, viewedCount, onClear
           <input value={s.datadogUrl} onChange={(e) => set('datadogUrl', e.target.value)} />
           <span className="muted small">Base URL for the per-call Datadog log links.</span>
         </label>
+        <label className="settings-check">
+          <input type="checkbox" checked={s.autoRefresh} onChange={(e) => set('autoRefresh', e.target.checked)} />
+          <span>
+            Auto-refresh every 5 minutes
+            <span className="muted small"> · only while the tab is visible; skips custom ranges that have already ended</span>
+          </span>
+        </label>
         <div className="settings-viewed">
           <div>
             Viewed history

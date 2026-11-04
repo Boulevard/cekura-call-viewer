@@ -366,6 +366,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .views-viewed { display: flex; gap: 14px; padding: 2px 4px 8px; }
 .btn.danger { color: var(--fail); border-color: var(--fail); }
 .link:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
+.settings-check { flex-direction: row !important; align-items: center; gap: 8px; }
+.settings-check input { width: auto; margin: 0; }
 .settings-viewed { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
 .td { padding: 0 12px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .td.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
