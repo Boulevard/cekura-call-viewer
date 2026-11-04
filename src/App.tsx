@@ -495,15 +495,16 @@ export default function App() {
   // A call counts as viewed once it's been open for a moment, so stepping through calls with j/k
   // doesn't mark every one passed on the way.
   const viewedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const selectedKey = useMemo(() => {
-    const c = calls.find((x) => x.uid === selectedId)
-    return c ? viewKey(c) : null
-  }, [calls, selectedId])
+  // A call that's still live or evaluating isn't really reviewed yet, so it only counts once it
+  // has a result (if it finishes while open, the 2 seconds start then).
+  const selectedCall = useMemo(() => calls.find((x) => x.uid === selectedId), [calls, selectedId])
+  const selectedKey = selectedCall ? viewKey(selectedCall) : null
+  const selectedPending = !!selectedCall && !!progressState(selectedCall)
   useEffect(() => {
-    if (!selectedKey) return
+    if (!selectedKey || selectedPending) return
     viewedTimer.current = setTimeout(() => markViewed([selectedKey], true), 2000)
     return () => { if (viewedTimer.current) clearTimeout(viewedTimer.current) }
-  }, [selectedKey, markViewed])
+  }, [selectedKey, selectedPending, markViewed])
 
   const selectedIndex = sorted.findIndex((r) => r.call.uid === selectedId)
   const selectedRow = selectedIndex >= 0 ? sorted[selectedIndex] : model.rows.find((r) => r.call.uid === selectedId)
