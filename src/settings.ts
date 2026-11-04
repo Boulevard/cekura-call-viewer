@@ -8,6 +8,8 @@ export interface Settings {
   retellUrl: string
   elevenlabsUrl: string
   datadogUrl: string
+  /** Reload the list every few minutes while the tab is visible. */
+  autoRefresh: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -16,6 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
   retellUrl: 'https://dashboard.retellai.com/call-history?history={call_id}',
   elevenlabsUrl: 'https://elevenlabs.io/app/agents/history/{call_id}',
   datadogUrl: 'https://app.datadoghq.com',
+  autoRefresh: true,
 }
 
 export function loadSettings(): Settings {

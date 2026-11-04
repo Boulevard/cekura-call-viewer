@@ -36,7 +36,7 @@ The ⚙ Settings dialog also lets you set an API key in the browser (stored in l
 
 Pick a project and a time range, then use the **Calls**, **Simulations** and **11Labs** toggles to choose what to load. Turn on Calls and Simulations to see production calls and simulation runs in one list. Cekura caps a range at 33 days, and the app stops at 10,000 rows by default (configurable in Settings).
 
-What's loaded is cached per source for 5 minutes, so turning **Calls**, **Simulations** or **11Labs** off and on again, or narrowing the time range, doesn't refetch anything, and widening it only fetches the extra stretch. ↻ (or `Ctrl+R`) always reloads everything fresh.
+What's loaded is cached per source for 5 minutes, so turning **Calls**, **Simulations** or **11Labs** off and on again, or narrowing the time range, doesn't refetch anything, and widening it only fetches the extra stretch. ↻ (or `Ctrl+R`) always reloads everything fresh. The list also refreshes itself every 5 minutes while the tab is visible (catching up when you come back to it), keeping each call's loaded variables, analysis and branch; turn that off in ⚙ Settings. Custom ranges that have already ended aren't refreshed.
 
 Simulation runs are found through their results (test-suite executions) created in the range. They show a `SIM` tag, and the **Simulation** column group adds result, scenario, personality, expected outcome (met / partial / not met), evaluation status and agent version.
 
