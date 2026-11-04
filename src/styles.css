@@ -514,6 +514,11 @@ table.mini tr.bad td { color: var(--fail); }
 @media (max-width: 1900px) {
   .project-org, .project-sep { display: none; }
 }
+@media (max-width: 1800px) {
+  /* The project name is enough to recognize it; the ID is in the picker and the title. */
+  .project-btn .project-id { display: none; }
+  .toolbar { gap: 5px; }
+}
 @media (max-width: 1750px) {
   .brand-text, .export-text { display: none; }
 }
@@ -578,6 +583,7 @@ table.mini tr.bad td { color: var(--fail); }
 .range-custom input { width: 100%; }
 .quick-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
 .quick-seg button { padding: 6px 11px; }
+.quick-toggles .toggle { padding: 6px 9px 6px 7px; gap: 6px; }
 .popover.quick-popover { width: 340px; padding: 8px; }
 .quick-search { width: 100%; margin-bottom: 6px; padding: 7px 10px; }
 .quick-list { max-height: 360px; overflow: auto; }

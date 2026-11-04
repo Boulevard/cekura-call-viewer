@@ -28,7 +28,7 @@ export function ProjectPicker({ projects, value, onChange }: Props) {
 
   return (
     <div className="popover-anchor project-picker">
-      <button className="project-btn" onClick={() => setOpen(true)} title="Switch Cekura project">
+      <button className="project-btn" onClick={() => setOpen(true)} title={`Switch Cekura project (current: ${value})`}>
         {org && <><span className="project-org">{org}</span><span className="project-sep">/</span></>}
         <span className="project-id">{value}</span>
         <span className="project-name">{current?.name ?? 'Project'}</span>

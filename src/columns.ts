@@ -49,6 +49,8 @@ const BASE_COLUMNS: Column[] = [
   { key: 'is_reviewed', label: 'Reviewed', group: 'Call', kind: 'category', width: 92 },
   // Whether you've opened the call in this app; local to this browser, unlike Cekura's Reviewed.
   { key: 'viewed', label: 'Viewed', group: 'Call', kind: 'category', width: 84 },
+  // Whether Cekura (or, for 11Labs-only rows, ElevenLabs) evaluated the call; very short calls never are.
+  { key: 'evaluated', label: 'Evaluated', group: 'Call', kind: 'category', width: 96 },
   { key: 'feedback', label: 'Feedback', group: 'Call', kind: 'text', width: 192 },
   { key: 'topic', label: 'Topic', group: 'Call', kind: 'category', width: 152 },
   { key: 'dropoff_point', label: 'Dropoff point', group: 'Call', kind: 'category', width: 152 },
@@ -172,6 +174,12 @@ export function progressState(call: CallLog): 'live' | 'evaluating' | null {
   return /^(success|failure|completed|failed|error|done|cancell?ed)$/.test(status) ? null : 'evaluating'
 }
 
+/** 'pending' while it may still get one, so hiding unevaluated calls doesn't hide calls in progress. */
+function evaluatedValue(call: CallLog): 'yes' | 'no' | 'pending' {
+  const has = call.source === 'el' ? call.success != null : (call.metrics?.length ?? 0) > 0
+  return has ? 'yes' : progressState(call) ? 'pending' : 'no'
+}
+
 /** Placeholder for ElevenLabs production calls whose branch hasn't been fetched yet. */
 export const BRANCH_PENDING = '…loading'
 
@@ -192,6 +200,7 @@ export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns:
       id: call.source === 'el' ? null : call.id,
       is_reviewed: call.is_reviewed ? 'yes' : 'no',
       viewed: viewed[viewKey(call)] ? 'yes' : 'no',
+      evaluated: evaluatedValue(call),
       feedback: call.feedback || null,
       topic: call.topic || null,
       dropoff_point: call.dropoff_point || null,
@@ -253,7 +262,7 @@ export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns:
     // Pass/fail metrics render as icons, so their words are left out; otherwise "fail" would
     // match nearly every row.
     for (const [k, val] of Object.entries(v)) {
-      if (k === 'viewed') continue
+      if (k === 'viewed' || k === 'evaluated') continue
       if (k === 'success') {
         const progress = progressState(call)
         searchParts.push(val === 'pass' ? 'Passed' : val === 'fail' ? 'Failed' : progress === 'live' ? 'In call' : progress ? 'Evaluating' : 'No result')
