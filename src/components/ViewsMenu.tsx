@@ -13,6 +13,9 @@ interface Props {
   onDelete: (id: string) => void
   onCopyLink: () => void
   onReset: () => void
+  /** Rows the current filters show, for marking them viewed or unviewed in one go. */
+  shownCount: number
+  onMarkShown: (viewed: boolean) => void
   storage: 'pending' | 'file' | 'unavailable' | 'error'
 }
 
@@ -96,6 +99,12 @@ export function ViewsMenu(p: Props) {
         <input type="checkbox" checked={includeQuery} onChange={(e) => setIncludeQuery(e.target.checked)} />
         Also save the project, agent and time range (opening the view reloads calls)
       </label>
+
+      <div className="views-section-title">Viewed history</div>
+      <div className="views-viewed">
+        <button className="link" disabled={!p.shownCount} onClick={() => p.onMarkShown(false)}>Mark {p.shownCount.toLocaleString()} shown as unviewed</button>
+        <button className="link" disabled={!p.shownCount} onClick={() => p.onMarkShown(true)}>Mark as viewed</button>
+      </div>
 
       <div className={`views-storage small ${p.storage === 'error' ? 'bad' : 'muted'}`}>
         {p.storage === 'file' && 'Saved to views.json in the app folder'}

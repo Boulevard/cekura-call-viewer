@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { BRANCH_PENDING, formatCell, isRangeKind, passRate, type Column, type Row } from '../columns'
+import { BRANCH_PENDING, formatCell, isRangeKind, passRate, progressState, type Column, type Row } from '../columns'
 import { summarize, type Filter, type SortSpec } from '../filters'
 import { cekuraLink, providerLink, type Settings } from '../settings'
 import type { DisplayItem } from '../grouping'
@@ -78,7 +78,7 @@ export function CallTable(p: Props) {
             const row = item.row
             return (
               <div key={row.call.uid}
-                className={`tr ${item.inGroup ? 'in-group' : ''} ${row.call.uid === p.selectedId ? 'selected' : ''} ${row.call.uid === p.cursorId ? 'cursor' : ''}`}
+                className={`tr ${item.inGroup ? 'in-group' : ''} ${row.call.uid === p.selectedId ? 'selected' : ''} ${row.call.uid === p.cursorId ? 'cursor' : ''} ${row.v.viewed === 'yes' ? 'viewed' : ''}`}
                 style={{ gridTemplateColumns: template, transform: `translateY(${vi.start}px)` }}
                 onClick={(e) => {
                   // Alt-click a cell to filter the table down to that value.
@@ -184,6 +184,7 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
   if (col.key === 'call_id') {
     return (
       <div className={`td mono ${v == null ? 'muted' : ''}`} data-col={col.key} title={v == null ? row.call.error_message || 'No provider call ID' : String(v)}>
+        {row.v.viewed === 'yes' && <span className="viewed-mark" title="You've opened this call">✓</span>}
         {row.call.source === 'sim' && <span className="sim-tag" title="Simulation run">SIM</span>}
         {row.call.source === 'el' && <span className="sim-tag el-tag" title="In ElevenLabs but not in Cekura">11L</span>}
         {/* Cekura leaves this empty when it couldn't match the run to a provider call; say so instead of a bare dash. */}
@@ -199,7 +200,7 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
       </div>
     )
   }
-  if (col.key === 'success') return <div className="td" data-col={col.key}><StatusDot value={v} /></div>
+  if (col.key === 'success') return <div className="td" data-col={col.key}><StatusDot value={v} progress={progressState(row.call)} /></div>
   if (col.kind === 'binary') return <div className="td" data-col={col.key}><MetricIcon value={v} /></div>
   if (col.kind === 'enum' && v != null) {
     // IDs that come in as metric values (business_id) get the same copy affordance as the other IDs.

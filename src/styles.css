@@ -154,6 +154,11 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .status.fail { color: var(--fail-text); }
 .status.na i { background: var(--muted-2); }
 .status.na { color: var(--muted); }
+.status.busy { color: var(--accent-text); }
+.status.busy.live { color: var(--pass); }
+.status i.spinner { width: 9px; height: 9px; background: none; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .status i.spinner { animation-duration: 2.4s; } }
 
 /* project picker, styled after Cekura's own switcher */
 .project-btn { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 5px 8px; border-radius: 8px; white-space: nowrap; }
@@ -350,6 +355,15 @@ body.resizing { cursor: col-resize; user-select: none; }
 .tr.selected { background: var(--row-sel); box-shadow: inset 4px 0 0 var(--accent); }
 .tr.cursor { box-shadow: inset 4px 0 0 var(--accent); background: var(--row-cursor); }
 .tr.cursor.selected { background: var(--row-sel); }
+/* Opened before: dimmed like a visited link, so the ones still to look at stand out. */
+.tr.viewed .td { opacity: 0.55; }
+.tr.viewed.selected .td, .tr.viewed.cursor .td, .tr.viewed:hover .td { opacity: 1; }
+.viewed-mark { flex-shrink: 0; color: var(--muted-2); font-size: 11px; margin-right: 6px; }
+.viewed-info { display: inline-flex; gap: 6px; align-items: baseline; }
+.views-viewed { display: flex; gap: 14px; padding: 2px 4px 8px; }
+.btn.danger { color: var(--fail); border-color: var(--fail); }
+.link:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
+.settings-viewed { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
 .td { padding: 0 12px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .td.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .td.links { gap: 10px; font-size: 12px; }

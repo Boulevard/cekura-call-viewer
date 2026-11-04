@@ -99,7 +99,7 @@ function valueLabel(col: Column, v: string | null) {
     const isSuccess = col.key === 'success'
     if (v === 'pass') return isSuccess ? 'Passed' : 'Pass'
     if (v === 'fail') return isSuccess ? 'Failed' : 'Fail'
-    return isSuccess ? 'Evaluating' : 'N/A'
+    return isSuccess ? 'Evaluating / no result' : 'N/A'
   }
   return v ?? '(empty)'
 }

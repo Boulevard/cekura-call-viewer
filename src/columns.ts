@@ -1,4 +1,5 @@
 import type { CallLog, CallMetric } from './types'
+import { viewKey, type ViewedMap } from './viewed'
 
 export type CellValue = string | number | null
 
@@ -46,6 +47,8 @@ const BASE_COLUMNS: Column[] = [
   { key: 'customer_number', label: 'Customer #', group: 'Call', kind: 'text', width: 142 },
   { key: 'id', label: 'Cekura ID', group: 'Call', kind: 'number', width: 112 },
   { key: 'is_reviewed', label: 'Reviewed', group: 'Call', kind: 'category', width: 92 },
+  // Whether you've opened the call in this app; local to this browser, unlike Cekura's Reviewed.
+  { key: 'viewed', label: 'Viewed', group: 'Call', kind: 'category', width: 84 },
   { key: 'feedback', label: 'Feedback', group: 'Call', kind: 'text', width: 192 },
   { key: 'topic', label: 'Topic', group: 'Call', kind: 'category', width: 152 },
   { key: 'dropoff_point', label: 'Dropoff point', group: 'Call', kind: 'category', width: 152 },
@@ -156,10 +159,23 @@ function kindFor(type: string): ColumnKind {
   return 'number'
 }
 
+/**
+ * Whether a call without a result is still on its way to one: live on the phone, or done and
+ * waiting on its evaluation. Calls that finished without a result (an 11Labs-only call ElevenLabs
+ * couldn't score, say) return null, so they don't spin forever.
+ */
+export function progressState(call: CallLog): 'live' | 'evaluating' | null {
+  if (call.success != null) return null
+  const status = (call.status || '').toLowerCase()
+  if (call.source === 'el') return status === 'in-progress' || status === 'initiated' ? 'live' : status === 'processing' ? 'evaluating' : null
+  if (/^(running|in[-_ ]?progress|ongoing|queued|pending|initiated)$/.test(status)) return 'live'
+  return /^(success|failure|completed|failed|error|done|cancell?ed)$/.test(status) ? null : 'evaluating'
+}
+
 /** Placeholder for ElevenLabs production calls whose branch hasn't been fetched yet. */
 export const BRANCH_PENDING = '…loading'
 
-export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] } {
+export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns: Column[]; rows: Row[] } {
   const metricCols = new Map<string, Column>()
   const variableCols = new Map<string, Column>()
 
@@ -175,6 +191,7 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
       call_id: call.call_id || null,
       id: call.source === 'el' ? null : call.id,
       is_reviewed: call.is_reviewed ? 'yes' : 'no',
+      viewed: viewed[viewKey(call)] ? 'yes' : 'no',
       feedback: call.feedback || null,
       topic: call.topic || null,
       dropoff_point: call.dropoff_point || null,
@@ -236,7 +253,11 @@ export function buildModel(calls: CallLog[]): { columns: Column[]; rows: Row[] }
     // Pass/fail metrics render as icons, so their words are left out; otherwise "fail" would
     // match nearly every row.
     for (const [k, val] of Object.entries(v)) {
-      if (k === 'success') searchParts.push(val === 'pass' ? 'Passed' : val === 'fail' ? 'Failed' : 'Evaluating')
+      if (k === 'viewed') continue
+      if (k === 'success') {
+        const progress = progressState(call)
+        searchParts.push(val === 'pass' ? 'Passed' : val === 'fail' ? 'Failed' : progress === 'live' ? 'In call' : progress ? 'Evaluating' : 'No result')
+      }
       else if (val == null || metricCols.get(k)?.kind === 'binary') continue
       else searchParts.push(k === 'timestamp' ? formatCell({ kind: 'date' } as Column, val) : k === 'duration' ? formatDuration(val as number) : String(val))
     }
