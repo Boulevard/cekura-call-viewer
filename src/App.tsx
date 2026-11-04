@@ -19,7 +19,7 @@ import { QueryBar, type QueryBarHandle } from './components/QueryBar'
 import { ElevenLabsAgents } from './components/ElevenLabsAgents'
 import { PRESETS, RangePicker } from './components/RangePicker'
 import { useViewed, viewKey } from './viewed'
-import { AgentFilter, BusinessFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
+import { AgentFilter, BusinessFilter, EvaluatedFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { useTheme } from './theme'
@@ -697,6 +697,7 @@ export default function App() {
         <span className="toolbar-sep" />
         <BusinessFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
         <QualifiedFilter columns={model.columns} filters={view.filters} onSetFilter={setFilter} />
+        <EvaluatedFilter filters={view.filters} onSetFilter={setFilter} />
         <IdsFilter filters={view.filters} loadedResultIds={loadedResultIds} loadedCallIds={loadedCallIds} loading={!!progress}
           onApply={({ results, calls: callIds }) => {
             // Only a list filter belongs to this box; a pattern typed in the query bar is left alone.
@@ -722,7 +723,7 @@ export default function App() {
         </div>
         <div className="popover-anchor">
           <button className={`btn view-btn ${activeView ? 'has-view' : ''}`} onClick={() => setPopover('views')} title="Saved views">
-            <span className="ellipsis">{activeView ? activeView.name : 'Unsaved view'}</span>
+            <span className="ellipsis">{activeView ? activeView.name : 'Views'}</span>
             {viewModified && <span className="view-dot" title="Unsaved changes" />}
             <span className="muted">▾</span>
           </button>

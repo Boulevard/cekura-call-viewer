@@ -123,6 +123,35 @@ export function QualifiedFilter({ columns, filters, onSetFilter }: Omit<Business
   )
 }
 
+/**
+ * Two toggles over one "is not" filter on the Evaluated column: "Evaluated only" leaves out calls
+ * that ended without an evaluation (mostly ones under ~5 seconds, which Cekura skips), and "Hide
+ * evaluating" leaves out calls still live or waiting on theirs. Both on is `-evaluated:(no OR pending)`.
+ */
+export function EvaluatedFilter({ filters, onSetFilter }: { filters: Filter[]; onSetFilter: (col: string, f: Filter | null) => void }) {
+  const f = filters.find((x) => x.col === 'evaluated')
+  // Anything else on this column (typed in the query bar) isn't one of these toggles, so both read as off.
+  const excluded = f?.type === 'set' && f.exclude && f.values.every((v) => v === 'no' || v === 'pending') ? f.values : []
+  const toggle = (value: 'no' | 'pending') => {
+    const next = excluded.includes(value) ? excluded.filter((v) => v !== value) : [...excluded, value]
+    onSetFilter('evaluated', next.length ? { col: 'evaluated', type: 'set', values: next, exclude: true } : null)
+  }
+  const button = (value: 'no' | 'pending', label: string, title: string) => {
+    const on = excluded.includes(value)
+    return (
+      <button className={`toggle ${on ? 'on' : ''}`} aria-pressed={on} title={title} onClick={() => toggle(value)}>
+        <span className="toggle-box">{on ? '✓' : ''}</span>{label}
+      </button>
+    )
+  }
+  return (
+    <div className="source-toggles quick-toggles">
+      {button('no', 'Evaluated only', 'Hide calls that ended without an evaluation, like ones under 5 seconds')}
+      {button('pending', 'Hide evaluating', 'Hide calls that are still in progress or waiting on their evaluation')}
+    </div>
+  )
+}
+
 // ElevenLabs conversation IDs and Retell call IDs; any other run of digits is a result ID, so lists
 // pasted from a sheet, Slack or a CSV column all work.
 const CALL_ID = /\b(?:conv|call)_[a-z0-9]+/gi
