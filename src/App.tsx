@@ -19,6 +19,7 @@ import { QueryBar, type QueryBarHandle } from './components/QueryBar'
 import { ElevenLabsAgents } from './components/ElevenLabsAgents'
 import { PRESETS, RangePicker } from './components/RangePicker'
 import { useViewed, viewKey } from './viewed'
+import { coverage, extendRows, FRESH_MS, inWindow, type LoadCache } from './loadCache'
 import { AgentFilter, BusinessFilter, EvaluatedFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
@@ -187,7 +188,8 @@ export default function App() {
     return f?.type === 'set' && !f.exclude ? pastedCallIds(f.values.filter((v): v is string => v != null)) : []
   }
 
-  const load = useCallback(async (q: Query = query, pins?: { results?: number[]; calls?: string[] }) => {
+  const cacheRef = useRef<LoadCache>({})
+  const load = useCallback(async (q: Query = query, pins?: { results?: number[]; calls?: string[] }, opts?: { fresh?: boolean }) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -203,6 +205,15 @@ export default function App() {
       setError('Cekura only allows ranges up to 33 days')
       return
     }
+    const from = Date.parse(range.from)
+    const to = Date.parse(range.to)
+    // Rows pick up branches, variables, analysis and refreshed results after loading; those live in
+    // state, so carry them back into the cache before reusing it. Another project starts over.
+    const current = new Map(callsRef.current.map((c) => [c.uid, c]))
+    if (opts?.fresh || [cacheRef.current.calls, cacheRef.current.sims, cacheRef.current.el].some((p) => p && p.projectId !== q.projectId)) cacheRef.current = {}
+    const cache = cacheRef.current
+    for (const p of [cache.calls, cache.sims]) if (p) p.rows = p.rows.map((r) => current.get(r.uid) ?? r)
+
     setProgress({ loaded: 0, total: 0 })
     const source = q.source ?? 'calls'
     const pinned = pins?.results ?? pinnedResultIds(viewRef.current.filters)
@@ -210,6 +221,7 @@ export default function App() {
     // Every agent is always loaded; picking agents is a filter on the loaded data, like any other.
     // (Older saved queries may still carry a server-side agentId; it's ignored so it can't hide calls.)
     const listQuery = { projectId: q.projectId, ...range }
+    const windowQuery = (f: number, t: number) => ({ projectId: q.projectId, from: new Date(f).toISOString(), to: new Date(t).toISOString() })
     // Everything loads in parallel; the progress bar shows the combined count.
     const parts = { calls: { loaded: 0, total: 0 }, sims: { loaded: 0, total: 0 }, el: { loaded: 0, total: 0 } }
     const report = (key: keyof typeof parts) => (loaded: number, total: number) => {
@@ -219,38 +231,96 @@ export default function App() {
     }
     const withCalls = sourceIncludes(source, 'calls')
     const withSims = sourceIncludes(source, 'sims')
+
+    // Calls or runs for the window: from the cache, the cache plus an earlier stretch, or fresh.
+    const rowsFor = async (key: 'calls' | 'sims') => {
+      const fetch = (w: ReturnType<typeof windowQuery>) => key === 'calls'
+        ? listCalls(settings, w, report('calls'), ctrl.signal)
+        : listSims(settings, w, report('sims'), ctrl.signal)
+      const c = coverage(cache[key], q.projectId, from, to)
+      if (c === 'miss') {
+        const res = await fetch(listQuery)
+        cache[key] = { projectId: q.projectId, from, to, at: Date.now(), truncated: res.truncated, total: res.total, rows: res.calls }
+      } else if (c !== 'hit') {
+        const res = await fetch(windowQuery(c.from, c.to))
+        extendRows(cache[key]!, c.from, res.calls, res.total, res.truncated)
+      }
+      return cache[key]!
+    }
+    // Provider call IDs Cekura has for a source that isn't shown, to tell which 11Labs conversations it's missing.
+    const idsFor = async (key: 'calls' | 'sims') => {
+      const rowsPart = cache[key]
+      if (coverage(rowsPart, q.projectId, from, to) === 'hit') return new Set(rowsPart!.rows.map((r) => r.call_id))
+      const idsKey = key === 'calls' ? 'callIds' : 'simIds'
+      if (coverage(cache[idsKey], q.projectId, from, to) !== 'hit') {
+        const ids = await listKnownProviderIds(settings, listQuery, { calls: key === 'calls', sims: key === 'sims' }, ctrl.signal)
+        cache[idsKey] = { projectId: q.projectId, from, to, at: Date.now(), truncated: false, ids }
+      }
+      return cache[idsKey]!.ids
+    }
+
     // Only used to label rows (and find the 11Labs agents); a failure here shouldn't block the list.
-    const agentsP: Promise<ProviderAgents> = listProviderAgents(settings, q.projectId)
-      .catch(() => ({ byCekuraAgent: new Map(), elevenLabs: new Map() }))
+    if (!cache.agents || cache.agents.projectId !== q.projectId || Date.now() - cache.agents.at > FRESH_MS) {
+      cache.agents = {
+        projectId: q.projectId, at: Date.now(),
+        value: listProviderAgents(settings, q.projectId).catch(() => ({ byCekuraAgent: new Map(), elevenLabs: new Map() })),
+      }
+    }
+    const agentsP: Promise<ProviderAgents> = cache.agents.value
     agentsP.then((a) => { if (abortRef.current === ctrl) setProjectElAgents(a.elevenLabs) })
     // ElevenLabs conversations, plus the provider IDs of whatever Cekura has that isn't being
     // loaded, so only conversations Cekura never imported get added.
     const elP = q.elevenLabs
       ? agentsP.then(async (agents) => {
-        const [conversations, known] = await Promise.all([
-          listConversations([...new Set([...agents.elevenLabs.keys(), ...(q.elevenLabsAgents ?? [])])].filter((id) => !q.elevenLabsSkip?.includes(id)), Date.parse(range.from), Date.parse(range.to), (n) => report('el')(n, n), ctrl.signal),
-          listKnownProviderIds(settings, listQuery, { calls: !withCalls, sims: !withSims }, ctrl.signal),
+        const agentIds = [...new Set([...agents.elevenLabs.keys(), ...(q.elevenLabsAgents ?? [])])].filter((id) => !q.elevenLabsSkip?.includes(id)).sort()
+        const key = agentIds.join()
+        const conversationsP = (async () => {
+          const c = coverage(cache.el, q.projectId, from, to, key)
+          if (c === 'miss') {
+            const conversations = await listConversations(agentIds, from, to, (n) => report('el')(n, n), ctrl.signal)
+            cache.el = { projectId: q.projectId, from, to, at: Date.now(), truncated: false, key, conversations }
+          } else if (c !== 'hit') {
+            const older = await listConversations(agentIds, c.from, c.to, (n) => report('el')(n, n), ctrl.signal)
+            const have = new Set(cache.el!.conversations.map((x) => x.conversation_id))
+            cache.el!.conversations.push(...older.filter((x) => !have.has(x.conversation_id)))
+            cache.el!.from = c.from
+          }
+          return cache.el!.conversations.filter((x) => inWindow(x.start_time_unix_secs * 1000, from, to))
+        })()
+        const [conversations, callIds, simIds] = await Promise.all([
+          conversationsP,
+          withCalls ? new Set<string>() : idsFor('calls'),
+          withSims ? new Set<string>() : idsFor('sims'),
         ])
-        return { conversations, known, agents }
+        return { conversations, known: new Set([...callIds, ...simIds]), agents }
       }).catch((e: Error) => {
         if (e.name === 'AbortError') throw e
         return { error: String(e.message ?? e) }
       })
       : null
     try {
-      const [callRes, simRes, providerAgents, el] = await Promise.all([
-        withCalls ? listCalls(settings, listQuery, report('calls'), ctrl.signal) : null,
-        withSims || pinned.length ? listSims(settings, listQuery, report('sims'), ctrl.signal, pinned, !withSims) : null,
+      const [callsPart, simsPart, providerAgents, el] = await Promise.all([
+        withCalls ? rowsFor('calls') : null,
+        withSims ? rowsFor('sims') : null,
         agentsP,
         elP,
       ])
-      const cekuraRows = [...(callRes?.calls ?? []), ...(simRes?.calls ?? [])]
+      const callRows = callsPart ? callsPart.rows.filter((r) => inWindow(r.timestamp, from, to)) : []
+      let simRows = simsPart ? simsPart.rows.filter((r) => inWindow(r.timestamp, from, to)) : []
+      // Results named in the IDs box are fetched by ID, whatever the range or toggles.
+      const missingResults = pinned.filter((id) => !simRows.some((r) => r.sim?.resultId === id))
+      if (missingResults.length) {
+        const extra = await listSims(settings, listQuery, report('sims'), ctrl.signal, missingResults, true)
+        simRows = [...simRows, ...extra.calls.map((c) => current.get(c.uid) ?? c)]
+      }
+      const cekuraRows = [...callRows, ...simRows]
       let elRows: CallLog[] = []
       if (el && 'conversations' in el) {
         const known = new Set([...el.known, ...cekuraRows.map((c) => c.call_id)])
         elRows = el.conversations
           .filter((c) => !known.has(c.conversation_id))
           .map((c) => conversationToCallLog(c, q.projectId, el.agents.elevenLabs.get(c.agent_id)))
+          .map((c) => current.get(c.uid) ?? c)
       }
       // Pasted call IDs that aren't loaded: look them up in Cekura first, then (for ElevenLabs
       // conversations Cekura doesn't have) in ElevenLabs. Retell calls can only come from Cekura.
@@ -268,19 +338,20 @@ export default function App() {
       const withAgents = cekuraRows.map((c) => ({
         ...c,
         providerAgentId: c.providerAgentId ?? providerAgents.byCekuraAgent.get(c.agent) ?? null,
-        // Production ElevenLabs calls start with an unknown branch (undefined) until it's fetched.
-        branchId: c.source === 'sim' ? c.branchId ?? null : c.call_id?.startsWith('conv_') ? undefined : null,
+        // Production ElevenLabs calls start with an unknown branch (undefined) until it's fetched;
+        // one already fetched (on a cached row) is kept.
+        branchId: c.source === 'sim' ? c.branchId ?? null : c.branchId !== undefined ? c.branchId : c.call_id?.startsWith('conv_') ? undefined : null,
       }))
       setCalls([...withAgents, ...elRows])
       setMeta({
         elOnly: el && 'conversations' in el ? elRows.length : undefined,
         elError: el && 'error' in el ? el.error : undefined,
-        total: (callRes?.total ?? 0) + (simRes?.total ?? 0),
-        truncated: !!callRes?.truncated || !!simRes?.truncated,
-        at: new Date(),
-        calls: callRes?.calls.length,
-        sims: simRes?.calls.length,
-        results: simRes?.results,
+        total: (callsPart?.truncated ? callsPart.total : callRows.length) + (simsPart?.truncated ? simsPart.total : simRows.length),
+        truncated: !!callsPart?.truncated || !!simsPart?.truncated,
+        at: new Date(Math.min(...[callsPart, simsPart, el && 'conversations' in el ? cache.el : undefined].flatMap((p) => (p ? [p.at] : [Date.now()])))),
+        calls: callsPart ? callRows.length : undefined,
+        sims: simsPart || missingResults.length ? simRows.length : undefined,
+        results: simsPart || missingResults.length ? new Set(simRows.map((r) => r.sim?.resultId)).size : undefined,
         projectId: q.projectId,
         ...range,
       })
@@ -631,7 +702,7 @@ export default function App() {
       // even from the search box. Cmd+R on a Mac and Ctrl+Shift+R still reload the page.
       if (e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey && e.key === 'r') {
         e.preventDefault()
-        loadRef.current()
+        loadRef.current(undefined, undefined, { fresh: true })
         return
       }
       if (t.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.altKey) return
@@ -747,7 +818,7 @@ export default function App() {
         </div>
         <RangePicker range={query.range} from={query.from} to={query.to} current={meta ?? safeRange(query)}
           onChange={(r) => { const q = { ...query, ...r }; setQuery(q); load(q) }} />
-        <button className="btn primary icon" onClick={() => load()} disabled={!!progress} title="Reload">{progress ? '…' : '↻'}</button>
+        <button className="btn primary icon" onClick={() => load(undefined, undefined, { fresh: true })} disabled={!!progress} title="Reload (Ctrl+R)">{progress ? '…' : '↻'}</button>
         {progress && <button className="btn ghost" onClick={() => { abortRef.current?.abort(); setProgress(null) }}>Cancel</button>}
         <span className="toolbar-sep" />
         <BusinessFilter columns={model.columns} filters={view.filters} facetRowsFor={facetRowsFor} onSetFilter={setFilter} />
