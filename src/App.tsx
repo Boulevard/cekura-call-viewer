@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, fetchCallBranches, fetchCallVariables, fetchRunVariables, getByProviderIds, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
-import { conversationToCallLog, getConversationAsCallLog, getConversationVariables, listConversations } from './elevenlabs'
-import { isVariableKey, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
+import { ApiError, fetchCallBranches, fetchCallVariables, fetchRunVariables, getByProviderIds, refreshCallsAndRuns, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
+import { conversationToCallLog, getConversationAsCallLog, getConversationVariables, getFreshConversationAsCallLog, listConversations } from './elevenlabs'
+import { isVariableKey, progressState, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
 import { load as loadStored, save, usePersistentState } from './storage'
@@ -18,6 +18,7 @@ import { ProjectPicker } from './components/ProjectPicker'
 import { QueryBar, type QueryBarHandle } from './components/QueryBar'
 import { ElevenLabsAgents } from './components/ElevenLabsAgents'
 import { PRESETS, RangePicker } from './components/RangePicker'
+import { useViewed, viewKey } from './viewed'
 import { AgentFilter, BusinessFilter, IdsFilter, pastedCallIds, QualifiedFilter } from './components/QuickFilters'
 import { Sidebar } from './components/Sidebar'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
@@ -303,7 +304,8 @@ export default function App() {
     loadRef.current(shared?.query ? { ...DEFAULT_QUERY, ...shared.query } : undefined)
   }, [shared])
 
-  const model = useMemo(() => buildModel(calls), [calls])
+  const { viewed, mark: markViewed, clear: clearViewed } = useViewed()
+  const model = useMemo(() => buildModel(calls, viewed), [calls, viewed])
   const loadedResultIds = useMemo(() => new Set(calls.flatMap((c) => (c.sim ? [c.sim.resultId] : []))), [calls])
   const loadedCallIds = useMemo(() => new Set(calls.map((c) => c.call_id)), [calls])
 
@@ -379,6 +381,47 @@ export default function App() {
     ]).catch(() => {}).finally(() => { if (!ctrl.signal.aborted) setVariableProgress(null) })
     return () => { ctrl.abort(); setVariableProgress(null) }
   }, [needsVariables, meta, settings])
+
+  // Rows still live or waiting on their evaluation refresh themselves every few seconds until
+  // they have a result. Cekura has no push API, so this polls, but only those rows, and not
+  // while the tab is hidden or a full load is running.
+  const pendingRows = useMemo(() => calls.filter((c) => progressState(c)), [calls])
+  const pendingKey = pendingRows.map((c) => c.uid).join()
+  const pendingRef = useRef(pendingRows)
+  pendingRef.current = pendingRows
+  const loadingRef = useRef(false)
+  loadingRef.current = !!progress
+  useEffect(() => {
+    if (!pendingKey || !meta) return
+    const ctrl = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    const tick = async () => {
+      if (!document.hidden && !loadingRef.current) {
+        const rows = pendingRef.current
+        const fresh = await Promise.all([
+          refreshCallsAndRuns(settings, meta.projectId,
+            rows.filter((c) => c.source === 'call').map((c) => c.id),
+            rows.flatMap((c) => (c.source === 'sim' && c.sim ? [{ id: c.id, resultName: c.sim.resultName }] : [])), ctrl.signal),
+          Promise.all(rows.filter((c) => c.source === 'el').map((c) =>
+            getFreshConversationAsCallLog(c.call_id, meta.projectId, ctrl.signal).catch(() => null))),
+        ]).catch(() => null)
+        if (fresh && !ctrl.signal.aborted && !loadingRef.current) {
+          const byUid = new Map([...fresh[0], ...fresh[1].filter((c): c is CallLog => !!c)].map((c) => [c.uid, c]))
+          setCalls((prev) => prev.map((c) => {
+            const f = byUid.get(c.uid)
+            if (!f) return c
+            // Keep what was filled in separately (agent mapping, branch, variables) on top of the fresh copy.
+            return { ...c, ...f, agent: c.agent, agent_name: c.agent_name, providerAgentId: c.providerAgentId ?? f.providerAgentId,
+              branchId: c.branchId ?? f.branchId, variables: c.variables, pinned: c.pinned }
+          }))
+        }
+      }
+      if (!ctrl.signal.aborted) timer = setTimeout(tick, 5000)
+    }
+    timer = setTimeout(tick, 5000)
+    return () => { ctrl.abort(); clearTimeout(timer) }
+  }, [pendingKey, meta, settings])
+
   const colMap = useMemo(() => new Map(model.columns.map((c) => [c.key, c])), [model.columns])
 
   // One-time: agent, provider agent, branch and ended reason left the default view after views were
@@ -448,6 +491,19 @@ export default function App() {
       location.hash = id.replace(':', '=')
     }
   }, [])
+
+  // A call counts as viewed once it's been open for a moment, so stepping through calls with j/k
+  // doesn't mark every one passed on the way.
+  const viewedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const selectedKey = useMemo(() => {
+    const c = calls.find((x) => x.uid === selectedId)
+    return c ? viewKey(c) : null
+  }, [calls, selectedId])
+  useEffect(() => {
+    if (!selectedKey) return
+    viewedTimer.current = setTimeout(() => markViewed([selectedKey], true), 2000)
+    return () => { if (viewedTimer.current) clearTimeout(viewedTimer.current) }
+  }, [selectedKey, markViewed])
 
   const selectedIndex = sorted.findIndex((r) => r.call.uid === selectedId)
   const selectedRow = selectedIndex >= 0 ? sorted[selectedIndex] : model.rows.find((r) => r.call.uid === selectedId)
@@ -682,6 +738,8 @@ export default function App() {
                   if (id === activeViewId) setActiveViewId(null)
                 }}
                 onCopyLink={copyViewLink}
+                shownCount={sorted.length}
+                onMarkShown={(v) => markViewed(sorted.map((r) => viewKey(r.call)), v)}
                 onReset={() => { setView({ ...DEFAULT_VIEW, visible: withDefaultMetrics(DEFAULT_VISIBLE, model.columns) }); setActiveViewId(null); setPopover(null) }} />
             </Popover>
           )}
@@ -774,6 +832,7 @@ export default function App() {
 
         {selectedRow && (
           <CallDetail key={selectedRow.call.uid} row={selectedRow} settings={settings}
+            viewedAt={viewed[viewKey(selectedRow.call)]} onMarkUnviewed={() => { viewedTimer.current && clearTimeout(viewedTimer.current); markViewed([viewKey(selectedRow.call)], false) }}
             position={selectedIndex >= 0 ? `${selectedIndex + 1} / ${sorted.length}` : 'not in filtered list'}
             onClose={() => select(null)} onPrev={() => step(-1)} onNext={() => step(1)}
             activePane={detailPane} onActivatePane={setDetailPane} paneRef={paneRef} />
@@ -782,6 +841,7 @@ export default function App() {
 
       {showSettings && (
         <SettingsDialog settings={settings} onClose={() => setShowSettings(false)}
+          viewedCount={Object.keys(viewed).length} onClearViewed={clearViewed}
           onSave={(s) => { setSettings(s); saveSettings(s) }} />
       )}
       {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}

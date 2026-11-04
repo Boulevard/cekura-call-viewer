@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { DEFAULT_SETTINGS, type Settings } from '../settings'
 
-export function SettingsDialog({ settings, onSave, onClose }: { settings: Settings; onSave: (s: Settings) => void; onClose: () => void }) {
+export function SettingsDialog({ settings, onSave, onClose, viewedCount, onClearViewed }: {
+  settings: Settings; onSave: (s: Settings) => void; onClose: () => void
+  viewedCount: number; onClearViewed: () => void
+}) {
   const [s, setS] = useState(settings)
+  const [confirmClear, setConfirmClear] = useState(false)
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS({ ...s, [k]: v })
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -32,6 +36,16 @@ export function SettingsDialog({ settings, onSave, onClose }: { settings: Settin
           <input value={s.datadogUrl} onChange={(e) => set('datadogUrl', e.target.value)} />
           <span className="muted small">Base URL for the per-call Datadog log links.</span>
         </label>
+        <div className="settings-viewed">
+          <div>
+            Viewed history
+            <div className="muted small">{viewedCount.toLocaleString()} call{viewedCount === 1 ? '' : 's'} marked viewed in this browser (kept for 60 days).</div>
+          </div>
+          <span className="spacer" />
+          {confirmClear
+            ? <><button className="btn danger" onClick={() => { onClearViewed(); setConfirmClear(false) }}>Clear all</button><button className="btn ghost" onClick={() => setConfirmClear(false)}>Keep</button></>
+            : <button className="btn" disabled={!viewedCount} onClick={() => setConfirmClear(true)}>Clear viewed history</button>}
+        </div>
         <div className="modal-actions">
           <button className="link" onClick={() => setS({ ...DEFAULT_SETTINGS, apiKey: s.apiKey })}>Reset defaults</button>
           <span className="spacer" />

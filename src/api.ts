@@ -383,6 +383,33 @@ export async function fetchCallBranches(
   await Promise.all(Array.from({ length: Math.min(3, batches.length) }, worker))
 }
 
+/**
+ * Fresh copies of specific calls and runs, for rows still waiting on a result. Runs keep the
+ * result name they were loaded with, since the run itself only has the result ID.
+ */
+export async function refreshCallsAndRuns(
+  settings: Settings,
+  projectId: number,
+  callIds: number[],
+  runs: { id: number; resultName: string }[],
+  signal?: AbortSignal,
+): Promise<CallLog[]> {
+  const chunk = <T,>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / 50) }, (_, i) => xs.slice(i * 50, i * 50 + 50))
+  const names = new Map(runs.map((r) => [r.id, r.resultName]))
+  const [calls, runRows] = await Promise.all([
+    Promise.all(chunk(callIds).map((ids) => get<Page<ListRow>>(settings, '/observability/v2/call-logs/', {
+      project_id: projectId, call_ids: ids.join(','), page_size: ids.length, ql: `{${LIST_FIELDS.join(',')}}`,
+    }, signal))),
+    Promise.all(chunk(runs.map((r) => r.id)).map((ids) => get<Page<RunRow>>(settings, '/test_framework/v2/runs/', {
+      project_id: projectId, id__in: ids.join(','), page_size: ids.length, ql: RUN_FIELDS,
+    }, signal))),
+  ])
+  return [
+    ...calls.flatMap((p) => p.results.map(toCallLog)),
+    ...runRows.flatMap((p) => p.results.map((r) => runToCallLog(r, projectId, names.get(r.id) ?? `Result ${r.result_id}`))),
+  ]
+}
+
 // ---- Dynamic variables ----------------------------------------------------------------------
 
 // Credentials aren't something to filter on, and shouldn't sit in memory or end up in a CSV.

@@ -115,7 +115,18 @@ export function conversationToCallLog(c: ElConversationSummary, projectId: numbe
 
 /** A single conversation as a row, for one pasted by ID that Cekura doesn't have. */
 export async function getConversationAsCallLog(id: string, projectId: number, agent?: (agentId: string) => { id: number; name: string } | undefined): Promise<CallLog> {
-  const raw = await getRawConversation(id)
+  return rawToCallLog(await getRawConversation(id), projectId, agent)
+}
+
+/** The conversation as it is now, skipping the cache: for a live call whose row is being refreshed. */
+export async function getFreshConversationAsCallLog(id: string, projectId: number, signal?: AbortSignal): Promise<CallLog> {
+  const raw = await elGet<Record<string, any>>(`/conversations/${encodeURIComponent(id)}`, {}, signal)
+  // A finished conversation won't change again, so it's kept for the detail view.
+  if (raw.status === 'done' || raw.status === 'failed') rawCache.set(id, Promise.resolve(raw))
+  return rawToCallLog(raw, projectId)
+}
+
+function rawToCallLog(raw: Record<string, any>, projectId: number, agent?: (agentId: string) => { id: number; name: string } | undefined): CallLog {
   const c: ElConversationSummary = {
     conversation_id: raw.conversation_id,
     agent_id: raw.agent_id,
@@ -131,6 +142,7 @@ export async function getConversationAsCallLog(id: string, projectId: number, ag
   }
   return conversationToCallLog(c, projectId, agent?.(c.agent_id))
 }
+
 
 // ---- detail ---------------------------------------------------------------------------------
 

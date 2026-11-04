@@ -13,7 +13,14 @@ export function MetricIcon({ value }: { value: CellValue }) {
   return <span className="mi na" title="N/A">–</span>
 }
 
-export function StatusDot({ value }: { value: CellValue }) {
+export function StatusDot({ value, progress }: { value: CellValue; progress?: 'live' | 'evaluating' | null }) {
+  if (value == null && progress) {
+    return (
+      <span className={`status busy ${progress}`} title={progress === 'live' ? 'The call is still going' : 'Waiting for the evaluation; reload to see the result'}>
+        <i className="spinner" />{progress === 'live' ? 'In call' : 'Evaluating'}
+      </span>
+    )
+  }
   const cls = value === 'pass' ? 'pass' : value === 'fail' ? 'fail' : 'na'
-  return <span className={`status ${cls}`}><i />{value === 'pass' ? 'Passed' : value === 'fail' ? 'Failed' : 'Evaluating'}</span>
+  return <span className={`status ${cls}`}><i />{value === 'pass' ? 'Passed' : value === 'fail' ? 'Failed' : 'No result'}</span>
 }

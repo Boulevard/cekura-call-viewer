@@ -136,6 +136,16 @@ The caller's phone number isn't in the logs, so it can't be used. Neither link f
 | `/` | Focus search. `Enter` in the search box jumps to the first result, so `j` / `k` carry on from there. |
 | `?` | Show all shortcuts |
 
+### Calls in progress
+
+Calls still being evaluated show a spinner and **Evaluating** in the Success column; calls still on the phone (11Labs-only rows, or runs still running) show **In call**. Those rows refresh themselves every 5 seconds until they have a result, then fill in their metrics; an open call's detail panel reloads too. Cekura has no push API, so this polls, but only for those rows, and it pauses while the tab is in the background. Calls that finished without a result show **No result**.
+
+### Viewed calls
+
+A call counts as viewed once its detail panel has been open for 2 seconds (stepping past calls with `j`/`k` doesn't mark them). Viewed rows are faded with a ✓ by the call ID, and the detail panel shows when you viewed it, with **Mark unviewed**. The **Viewed** column (`viewed:yes` / `-viewed:yes`) filters on it, so `-viewed:yes` shows only calls you haven't opened yet.
+
+The history is kept in this browser only, for 60 days. The **View** menu can mark every row the current filters show as viewed or unviewed, and ⚙ Settings has **Clear viewed history**.
+
 ### Saved views
 
 The **View:** menu saves your columns, filters and sort under a name, optionally with the project, agent, time range and source toggles. A dot on the button means the active view has unsaved changes; from the menu you can save, revert, rename or delete views, or copy a link that carries the current setup.

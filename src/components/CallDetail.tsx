@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCall, getRun } from '../api'
 import { getConversationDetail, getRawConversation } from '../elevenlabs'
-import { binaryValue, expectedOutcomeLabel, formatDuration, parseDuration, type Row } from '../columns'
+import { binaryValue, expectedOutcomeLabel, formatDuration, parseDuration, progressState, type Row } from '../columns'
 import { cekuraLink, providerLink, type Settings } from '../settings'
 import type { CallDetail as Detail, CallLog, CallMetric, EvaluationMetric } from '../types'
-import { BinaryBadge } from './Badge'
+import { BinaryBadge, StatusDot } from './Badge'
 import { callVariables, datadogLinks } from '../datadog'
 import { CopyIcon, isPhoneNumber } from './CopyIcon'
 import { JsonView } from './JsonView'
@@ -19,13 +19,16 @@ interface Props {
   paneRef: (pane: DetailPane, el: HTMLElement | null) => void
   row: Row
   settings: Settings
+  /** When you last opened this call, if it's in your viewed history. */
+  viewedAt?: number
+  onMarkUnviewed: () => void
   position: string
   onClose: () => void
   onPrev: () => void
   onNext: () => void
 }
 
-export function CallDetail({ row, settings, position, onClose, onPrev, onNext, activePane, onActivatePane, paneRef }: Props) {
+export function CallDetail({ row, settings, position, onClose, onPrev, onNext, activePane, onActivatePane, paneRef, viewedAt, onMarkUnviewed }: Props) {
   const call = row.call
   const [detail, setDetail] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -47,7 +50,8 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
     )
     return () => { cancelled = true }
     // call.uid identifies the row; call itself is a new object whenever the list reloads.
-  }, [call.uid, settings])
+    // A call that was still evaluating when opened gets its metrics and explanations once it's done.
+  }, [call.uid, call.success, settings])
 
   const isElevenLabs = !!call.call_id?.startsWith('conv_')
   if (tab === 'elevenlabs' && !isElevenLabs) setTab('transcript')
@@ -89,6 +93,12 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
             <button className="btn ghost" onClick={onPrev} title="Previous (k / ↑)">↑</button>
             <button className="btn ghost" onClick={onNext} title="Next (j / ↓)">↓</button>
             <span className="muted small">{position}</span>
+            {viewedAt && (
+              <span className="muted small viewed-info" title={new Date(viewedAt).toLocaleString()}>
+                · viewed {new Date(viewedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                <button className="link" onClick={onMarkUnviewed}>Mark unviewed</button>
+              </span>
+            )}
           </div>
           <h2>
             {call.sim && <span className="sim-tag big">SIMULATION</span>}
@@ -100,7 +110,7 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
         <div className="detail-facts">
           <span>{new Date(call.timestamp).toLocaleString()}</span>
           <span>{formatDuration(parseDuration(call.duration))}</span>
-          <BinaryBadge value={row.v.success} naLabel="pending" />
+          {row.v.success == null && progressState(call) ? <StatusDot value={null} progress={progressState(call)} /> : <BinaryBadge value={row.v.success} naLabel="no result" />}
           <span className="pill">{call.status}</span>
           {call.call_ended_reason && <span className="pill">{call.call_ended_reason}</span>}
         </div>
