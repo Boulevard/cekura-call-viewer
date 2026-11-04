@@ -101,6 +101,12 @@ Click **Load dynamic variables** above the table to load each call's ElevenLabs 
 
 They add 5–25KB per call, so like branches they're only fetched when you ask, or while a variable column is shown, filtered, sorted or searched on (a saved view that uses one loads them automatically). Credentials (`secret__*`, auth tokens) and long blobs such as the knowledge base or service catalog are left out. Simulation runs and 11Labs-only rows (including ones from agents added in the **11Labs: Agents** menu) get them as well; those come from ElevenLabs one conversation at a time, so a few hundred take about 10 seconds.
 
+### 11Labs analysis
+
+Click **Load 11Labs analysis** above the table to load ElevenLabs' Analysis tab for every ElevenLabs call: the transcript summary and title, each data collection result (`call_summary`, `caller_intent`, `resolved`…) and each evaluation criterion (pass/fail). They appear under **11Labs analysis** in **Columns** and as `el.` query fields, e.g. `el.call_summary:*cancel*` or `el.resolved:false`, and free-text search covers them.
+
+It takes one request per conversation (about 40 seconds for 600 calls), so like dynamic variables it only loads when asked or while one of its columns is shown, filtered, sorted or searched on. Calls still in progress get theirs once they finish.
+
 ### Call detail
 
 Click a row, or press `Enter`. The panel shows:

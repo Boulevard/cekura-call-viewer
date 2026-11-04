@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, fetchCallBranches, fetchCallVariables, fetchRunVariables, getByProviderIds, refreshCallsAndRuns, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
-import { conversationToCallLog, getConversationAsCallLog, getConversationVariables, getFreshConversationAsCallLog, listConversations } from './elevenlabs'
-import { isVariableKey, progressState, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
+import { conversationToCallLog, getConversationAnalysis, getConversationAsCallLog, getConversationVariables, getFreshConversationAsCallLog, listConversations } from './elevenlabs'
+import { isAnalysisKey, isVariableKey, progressState, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
 import { loadSettings, saveSettings, type Settings } from './settings'
 import { load as loadStored, save, usePersistentState } from './storage'
@@ -382,6 +382,16 @@ export default function App() {
     return () => { ctrl.abort(); setVariableProgress(null) }
   }, [needsVariables, meta, settings])
 
+  // ElevenLabs' Analysis tab (data collection, evaluation criteria, summary) takes one ~130KB
+  // request per conversation, so like dynamic variables it's only fetched when asked for or while
+  // one of its columns is in use. Calls still in progress wait until they're done.
+  const [wantAnalysis, setWantAnalysis] = useState(false)
+  const [analysisProgress, setAnalysisProgress] = useState<{ done: number; total: number } | null>(null)
+  const needsAnalysis = wantAnalysis || /\bel\./i.test(search) ||
+    view.visible.some(isAnalysisKey) || view.filters.some((f) => isAnalysisKey(f.col)) || view.sort.some((s) => isAnalysisKey(s.col))
+  const needsAnalysisRef = useRef(needsAnalysis)
+  needsAnalysisRef.current = needsAnalysis
+
   // Rows still live or waiting on their evaluation refresh themselves every few seconds until
   // they have a result. Cekura has no push API, so this polls, but only those rows, and not
   // while the tab is hidden or a full load is running.
@@ -414,6 +424,17 @@ export default function App() {
             return { ...c, ...f, agent: c.agent, agent_name: c.agent_name, providerAgentId: c.providerAgentId ?? f.providerAgentId,
               branchId: c.branchId ?? f.branchId, variables: c.variables, pinned: c.pinned }
           }))
+          // ElevenLabs calls that just finished get their analysis here, while it's being shown.
+          const finished = [...byUid.values()].filter((c) => c.call_id?.startsWith('conv_') && !progressState(c))
+          if (needsAnalysisRef.current && finished.length) {
+            // Not tied to this poll's abort signal: the poll restarts as soon as these rows stop being
+            // pending, and they wouldn't be picked up again.
+            Promise.all(finished.map(async (c) => [c.uid, await getConversationAnalysis(c.call_id).catch(() => null)] as const))
+              .then((found) => {
+                const m = new Map(found)
+                setCalls((prev) => prev.map((c) => (m.has(c.uid) && c.analysis === undefined ? { ...c, analysis: m.get(c.uid) } : c)))
+              })
+          }
         }
       }
       if (!ctrl.signal.aborted) timer = setTimeout(tick, 5000)
@@ -421,6 +442,40 @@ export default function App() {
     timer = setTimeout(tick, 5000)
     return () => { ctrl.abort(); clearTimeout(timer) }
   }, [pendingKey, meta, settings])
+
+  const analysisTodo = (c: CallLog) => !!c.call_id?.startsWith('conv_') && c.analysis === undefined && !progressState(c)
+  useEffect(() => {
+    if (!needsAnalysis || !meta) return
+    const todo = callsRef.current.filter(analysisTodo)
+    if (todo.length === 0) return
+    const ctrl = new AbortController()
+    let done = 0
+    let next = 0
+    let batch = new Map<string, CallLog['analysis']>()
+    setAnalysisProgress({ done, total: todo.length })
+    const flush = () => {
+      if (!batch.size || ctrl.signal.aborted) return
+      const found = batch
+      batch = new Map()
+      done += found.size
+      setAnalysisProgress({ done, total: todo.length })
+      setCalls((prev) => prev.map((c) => (found.has(c.uid) ? { ...c, analysis: found.get(c.uid) } : c)))
+    }
+    const worker = async () => {
+      while (next < todo.length && !ctrl.signal.aborted) {
+        const c = todo[next++]
+        // Awaited first: `batch` is swapped on every flush, and batch.set(…, await …) would write to the old one.
+        const analysis = await getConversationAnalysis(c.call_id, ctrl.signal).catch(() => undefined)
+        // A request that failed even after retries is left unset, so the next load tries it again.
+        if (analysis !== undefined) batch.set(c.uid, analysis)
+        if (batch.size >= 25) flush()
+      }
+    }
+    Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker))
+      .then(flush, () => {})
+      .finally(() => { if (!ctrl.signal.aborted) setAnalysisProgress(null) })
+    return () => { flush(); ctrl.abort(); setAnalysisProgress(null) }
+  }, [needsAnalysis, meta, settings])
 
   const colMap = useMemo(() => new Map(model.columns.map((c) => [c.key, c])), [model.columns])
 
@@ -790,6 +845,13 @@ export default function App() {
                 )}
                 {branchProgress && <span className="branch-progress">Loading 11Labs branches {branchProgress.done}/{branchProgress.total}…</span>}
                 {variableProgress && <span className="branch-progress">Loading dynamic variables {variableProgress.done}/{variableProgress.total}…</span>}
+                {analysisProgress && <span className="branch-progress">Loading 11Labs analysis {analysisProgress.done}/{analysisProgress.total}…</span>}
+                {meta && !needsAnalysis && !analysisProgress && calls.some(analysisTodo) && (
+                  <button className="link" onClick={() => setWantAnalysis(true)}
+                    title="Load ElevenLabs' data collection, evaluation criteria and transcript summary for each ElevenLabs call">
+                    Load 11Labs analysis
+                  </button>
+                )}
                 {meta && !needsVariables && !variableProgress && calls.some((c) => c.variables === undefined) && (
                   <button className="link" onClick={() => setWantVariables(true)}
                     title="Load each call's ElevenLabs / Retell dynamic variables as columns you can filter, sort and search on">

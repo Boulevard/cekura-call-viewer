@@ -42,6 +42,16 @@ export interface SimInfo {
  * One row in the list. Simulation runs are mapped onto the call-log shape so the table,
  * filters and detail view treat both the same; `source` and `sim` carry the differences.
  */
+/** The Analysis tab of an ElevenLabs conversation, trimmed to what's worth a column. */
+export interface ElAnalysis {
+  /** Data collection results by ID, e.g. call_summary, caller_intent. */
+  data: Record<string, string>
+  /** Evaluation criteria by ID. */
+  criteria: Record<string, 'pass' | 'fail' | null>
+  summary: string | null
+  title: string | null
+}
+
 export interface CallLog {
   /** Unique across sources (`call:<id>` / `run:<id>`), since call-log and run IDs can collide. */
   uid: string
@@ -56,6 +66,8 @@ export interface CallLog {
    * Undefined until fetched, since they're only loaded while a variable column is in use.
    */
   variables?: Record<string, string> | null
+  /** ElevenLabs' own analysis of the conversation; undefined until fetched, null for non-ElevenLabs calls. */
+  analysis?: ElAnalysis | null
   /** Loaded only because its call ID was pasted into the IDs box; dropped when that's cleared. */
   pinned?: boolean
   id: number

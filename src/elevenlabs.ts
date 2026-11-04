@@ -3,15 +3,27 @@
  * and for showing the raw 11Labs record next to Cekura's. Requests go through the dev server's
  * /elevenlabs proxy, which adds ELEVENLABS_API_KEY.
  */
-import type { CallDetail, CallLog, CallMetric, EvaluationMetric } from './types'
+import type { CallDetail, CallLog, CallMetric, ElAnalysis, EvaluationMetric } from './types'
 
 const BASE = '/elevenlabs/v1/convai'
 const PAGE_SIZE = 100
 
+const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const t = setTimeout(resolve, ms)
+  signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')) }, { once: true })
+})
+
 async function elGet<T>(path: string, params: Record<string, string | number | undefined> = {}, signal?: AbortSignal): Promise<T> {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))
-  const res = await fetch(`${BASE}${path}${qs.size ? `?${qs}` : ''}`, { headers: { Accept: 'application/json' }, signal })
+  const url = `${BASE}${path}${qs.size ? `?${qs}` : ''}`
+  let res = await fetch(url, { headers: { Accept: 'application/json' }, signal })
+  // Bulk loads (analysis, variables) can hit ElevenLabs' rate limit; back off and retry a few times.
+  for (let attempt = 1; res.status === 429 && attempt <= 4; attempt++) {
+    const retryAfter = Number(res.headers.get('retry-after'))
+    await sleep(retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt, signal)
+    res = await fetch(url, { headers: { Accept: 'application/json' }, signal })
+  }
   if (!res.ok) {
     let msg = res.statusText
     try { msg = JSON.stringify((await res.json()).detail ?? '') || msg } catch { /* not JSON */ }
@@ -146,7 +158,7 @@ function rawToCallLog(raw: Record<string, any>, projectId: number, agent?: (agen
 
 // ---- detail ---------------------------------------------------------------------------------
 
-interface ElAnalysis {
+interface ElRawAnalysis {
   evaluation_criteria_results?: Record<string, { criteria_id: string; result: string; rationale?: string }>
   data_collection_results?: Record<string, { data_collection_id: string; value: unknown; rationale?: string }>
 }
@@ -173,10 +185,27 @@ export async function getConversationVariables(id: string, signal?: AbortSignal)
   return raw.conversation_initiation_client_data?.dynamic_variables
 }
 
+/** A conversation's Analysis tab (data collection, evaluation criteria, summary), for the table. */
+export async function getConversationAnalysis(id: string, signal?: AbortSignal): Promise<ElAnalysis> {
+  const raw = await (rawCache.get(id) ?? elGet<Record<string, any>>(`/conversations/${encodeURIComponent(id)}`, {}, signal))
+  const a = raw.analysis ?? {}
+  const text = (v: unknown) => (v == null || v === '' ? null : typeof v === 'string' ? v : JSON.stringify(v))
+  const data: Record<string, string> = {}
+  for (const r of Object.values<any>(a.data_collection_results ?? {})) {
+    const v = text(r.value)
+    if (v != null) data[r.data_collection_id] = v
+  }
+  const criteria: ElAnalysis['criteria'] = {}
+  for (const r of Object.values<any>(a.evaluation_criteria_results ?? {})) {
+    criteria[r.criteria_id] = r.result === 'success' ? 'pass' : r.result === 'failure' ? 'fail' : null
+  }
+  return { data, criteria, summary: text(a.transcript_summary), title: text(a.call_summary_title) }
+}
+
 export const audioUrl = (id: string) => `${BASE}/conversations/${encodeURIComponent(id)}/audio`
 
 /** ElevenLabs' own evaluation, shaped like Cekura metrics so the metrics pane can show it. */
-function analysisMetrics(analysis: ElAnalysis | undefined): EvaluationMetric[] {
+function analysisMetrics(analysis: ElRawAnalysis | undefined): EvaluationMetric[] {
   const out: EvaluationMetric[] = []
   let id = -1
   for (const r of Object.values(analysis?.evaluation_criteria_results ?? {})) {

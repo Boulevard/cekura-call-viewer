@@ -27,10 +27,13 @@ export interface Row {
   search: string
 }
 
-export const GROUPS = ['Call', 'Simulation', 'Binary metrics', 'Enum metrics', 'Numeric metrics', 'Dynamic variables'] as const
+export const GROUPS = ['Call', 'Simulation', 'Binary metrics', 'Enum metrics', 'Numeric metrics', '11Labs analysis', 'Dynamic variables'] as const
 
 /** Dynamic variable columns are keyed `dv:<variable name>`. */
 export const isVariableKey = (key: string) => key.startsWith('dv:')
+
+/** ElevenLabs analysis columns are keyed `ea:…`. */
+export const isAnalysisKey = (key: string) => key.startsWith('ea:')
 
 const BASE_COLUMNS: Column[] = [
   { key: 'call_id', label: 'Call / conversation ID', group: 'Call', kind: 'text', width: 280 },
@@ -186,6 +189,7 @@ export const BRANCH_PENDING = '…loading'
 export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns: Column[]; rows: Row[] } {
   const metricCols = new Map<string, Column>()
   const variableCols = new Map<string, Column>()
+  const analysisCols = new Map<string, Column>()
 
   const rows = calls.map((call): Row => {
     const v: Record<string, CellValue> = {
@@ -252,6 +256,17 @@ export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns:
         v[k] = n
       }
     }
+    if (call.analysis) {
+      const add = (key: string, label: string, kind: ColumnKind, width: number, val: CellValue) => {
+        if (!analysisCols.has(key)) analysisCols.set(key, { key, label, group: '11Labs analysis', kind, width })
+        v[key] = val
+        if (val != null && kind !== 'binary') searchParts.push(String(val))
+      }
+      add('ea:summary', 'Transcript summary', 'text', 320, call.analysis.summary)
+      add('ea:title', 'Summary title', 'text', 200, call.analysis.title)
+      for (const [id, val] of Object.entries(call.analysis.data)) add(`ea:d:${id}`, id, 'enum', val.length > 60 ? 280 : 170, val)
+      for (const [id, val] of Object.entries(call.analysis.criteria)) add(`ea:c:${id}`, id, 'binary', 104, val)
+    }
     for (const [name, val] of Object.entries(call.variables ?? {})) {
       const key = `dv:${name}`
       if (!variableCols.has(key)) variableCols.set(key, { key, label: name, group: 'Dynamic variables', kind: 'category', width: 170 })
@@ -262,7 +277,7 @@ export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns:
     // Pass/fail metrics render as icons, so their words are left out; otherwise "fail" would
     // match nearly every row.
     for (const [k, val] of Object.entries(v)) {
-      if (k === 'viewed' || k === 'evaluated') continue
+      if (k === 'viewed' || k === 'evaluated' || isAnalysisKey(k)) continue
       if (k === 'success') {
         const progress = progressState(call)
         searchParts.push(val === 'pass' ? 'Passed' : val === 'fail' ? 'Failed' : progress === 'live' ? 'In call' : progress ? 'Evaluating' : 'No result')
@@ -275,7 +290,10 @@ export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns:
 
   const sortedMetricCols = [...metricCols.values()].sort((a, b) => a.label.localeCompare(b.label))
   const sortedVariableCols = [...variableCols.values()].sort((a, b) => a.label.localeCompare(b.label))
-  return { columns: [...BASE_COLUMNS, ...sortedMetricCols, ...sortedVariableCols], rows }
+  // Summary and title first, then data collection and criteria alphabetically.
+  const sortedAnalysisCols = [...analysisCols.values()].sort((a, b) =>
+    Number(b.key === 'ea:summary') - Number(a.key === 'ea:summary') || Number(b.key === 'ea:title') - Number(a.key === 'ea:title') || a.label.localeCompare(b.label))
+  return { columns: [...BASE_COLUMNS, ...sortedMetricCols, ...sortedAnalysisCols, ...sortedVariableCols], rows }
 }
 
 export function formatCell(col: Column, v: CellValue): string {
