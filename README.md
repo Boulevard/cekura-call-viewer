@@ -142,7 +142,7 @@ Calls still being evaluated show a spinner and **Evaluating** in the Success col
 
 ### Viewed calls
 
-A call counts as viewed once its detail panel has been open for 2 seconds (stepping past calls with `j`/`k` doesn't mark them). Viewed rows are faded with a ✓ by the call ID, and the detail panel shows when you viewed it, with **Mark unviewed**. The **Viewed** column (`viewed:yes` / `-viewed:yes`) filters on it, so `-viewed:yes` shows only calls you haven't opened yet.
+A call counts as viewed once its detail panel has been open for 2 seconds (stepping past calls with `j`/`k` doesn't mark them). Calls still live or evaluating don't count until they have a result. Viewed rows are faded with a ✓ by the call ID, and the detail panel shows when you viewed it, with **Mark unviewed**. The **Viewed** column (`viewed:yes` / `-viewed:yes`) filters on it, so `-viewed:yes` shows only calls you haven't opened yet.
 
 The history is kept in this browser only, for 60 days. The **View** menu can mark every row the current filters show as viewed or unviewed, and ⚙ Settings has **Clear viewed history**.
 
