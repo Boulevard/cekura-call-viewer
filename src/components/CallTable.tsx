@@ -185,6 +185,10 @@ function Cell({ col, row, settings }: { col: Column; row: Row; settings: Setting
     return (
       <div className={`td mono ${v == null ? 'muted' : ''}`} data-col={col.key} title={v == null ? row.call.error_message || 'No provider call ID' : String(v)}>
         {row.v.viewed === 'yes' && <span className="viewed-mark" title="You've opened this call">✓</span>}
+        {/* Also here, not just in Success, so it shows whichever columns are visible. */}
+        {progressState(row.call) && (
+          <span className={`id-spinner ${progressState(row.call)}`} title={progressState(row.call) === 'live' ? 'Still in the call' : 'Still being evaluated'}><i className="spinner" /></span>
+        )}
         {row.call.source === 'sim' && <span className="sim-tag" title="Simulation run">SIM</span>}
         {row.call.source === 'el' && <span className="sim-tag el-tag" title="In ElevenLabs but not in Cekura">11L</span>}
         {/* Cekura leaves this empty when it couldn't match the run to a provider call; say so instead of a bare dash. */}
