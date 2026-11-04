@@ -90,6 +90,8 @@ function MultiValueFilter({ col, one, many, filters, facetRowsFor, onSetFilter }
               <label key={v} className={`quick-item ${isOn(v) && (excludeMode || selected.length) ? 'on' : ''} ${excluded.includes(v) ? 'excluded' : ''}`}>
                 <input type="checkbox" checked={isOn(v)} onChange={() => toggle(v)} />
                 <span className="ellipsis" title={v}>{v}</span>
+                <button className="link quick-exclude" title={`Show only this ${one}`}
+                  onClick={(e) => { e.preventDefault(); include([v]) }}>Only</button>
                 <button className="link quick-exclude" title={`Show every ${one} except this one`}
                   onClick={(e) => { e.preventDefault(); excludeOne(v) }}>Exclude</button>
                 <span className="quick-count">{n ? n.toLocaleString() : ''}</span>
