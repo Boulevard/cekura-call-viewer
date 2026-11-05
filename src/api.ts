@@ -460,6 +460,47 @@ export async function fetchCallVariables(
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker))
 }
 
+const SPEECH_LINE = /^\[[\d:]+\] (Main Agent|Testing Agent): (.*)$/
+
+/** Keeps who-said-what from Cekura's plain-text transcript and drops the tool call payloads. */
+function spokenLines(transcript: string | null | undefined): string | null {
+  if (!transcript) return null
+  const out: string[] = []
+  for (const line of transcript.split('\n')) {
+    const m = SPEECH_LINE.exec(line)
+    if (m) out.push(`${m[1] === 'Main Agent' ? 'Agent' : 'Caller'}: ${m[2].trim()}`)
+  }
+  return out.length ? out.join('\n') : null
+}
+
+/** Transcripts for call logs, in batches, for searching what was said. */
+export async function fetchCallTranscripts(
+  settings: Settings,
+  projectId: number,
+  ids: number[],
+  range: { from: string; to: string },
+  onBatch: (found: Map<number, string | null>) => void,
+  signal?: AbortSignal,
+) {
+  const batches: number[][] = []
+  for (let i = 0; i < ids.length; i += VARIABLE_BATCH) batches.push(ids.slice(i, i + VARIABLE_BATCH))
+  let next = 0
+  async function worker() {
+    while (next < batches.length) {
+      const batch = batches[next++]
+      const res = await get<Page<{ id: number; transcript?: string }>>(settings, '/observability/v2/call-logs/', {
+        project_id: projectId, call_ids: batch.join(','), page_size: batch.length, ql: '{id,transcript}',
+        timestamp_from: range.from, timestamp_to: range.to,
+      }, signal)
+      const found = new Map<number, string | null>(batch.map((id) => [id, null]))
+      for (const r of res.results) found.set(r.id, spokenLines(r.transcript))
+      onBatch(found)
+    }
+  }
+  // Fewer at once than other loads: this runs in the background and shouldn't crowd out what's on screen.
+  await Promise.all(Array.from({ length: Math.min(3, batches.length) }, worker))
+}
+
 /** Dynamic variables for simulation runs, which keep them in the provider metadata. */
 export async function fetchRunVariables(
   settings: Settings,

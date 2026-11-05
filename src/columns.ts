@@ -54,6 +54,8 @@ const BASE_COLUMNS: Column[] = [
   { key: 'viewed', label: 'Viewed', group: 'Call', kind: 'category', width: 84 },
   // Whether Cekura (or, for 11Labs-only rows, ElevenLabs) evaluated the call; very short calls never are.
   { key: 'evaluated', label: 'Evaluated', group: 'Call', kind: 'category', width: 96 },
+  // The spoken lines, loaded in the background; mainly there so search and `transcript:` cover what was said.
+  { key: 'transcript', label: 'Transcript', group: 'Call', kind: 'text', width: 320 },
   { key: 'feedback', label: 'Feedback', group: 'Call', kind: 'text', width: 192 },
   { key: 'topic', label: 'Topic', group: 'Call', kind: 'category', width: 152 },
   { key: 'dropoff_point', label: 'Dropoff point', group: 'Call', kind: 'category', width: 152 },
@@ -205,6 +207,7 @@ export function buildModel(calls: CallLog[], viewed: ViewedMap = {}): { columns:
       is_reviewed: call.is_reviewed ? 'yes' : 'no',
       viewed: viewed[viewKey(call)] ? 'yes' : 'no',
       evaluated: evaluatedValue(call),
+      transcript: call.transcriptText ?? null,
       feedback: call.feedback || null,
       topic: call.topic || null,
       dropoff_point: call.dropoff_point || null,

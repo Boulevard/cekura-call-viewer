@@ -10,6 +10,10 @@ export interface Settings {
   datadogUrl: string
   /** Reload the list every few minutes while the tab is visible. */
   autoRefresh: boolean
+  /** Fetch call transcripts after each load so search covers what was said. */
+  backgroundTranscripts: boolean
+  /** Fetch dynamic variables after each load, so their columns and filters are ready. */
+  backgroundVariables: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,6 +23,8 @@ export const DEFAULT_SETTINGS: Settings = {
   elevenlabsUrl: 'https://elevenlabs.io/app/agents/history/{call_id}',
   datadogUrl: 'https://app.datadoghq.com',
   autoRefresh: true,
+  backgroundTranscripts: true,
+  backgroundVariables: true,
 }
 
 export function loadSettings(): Settings {

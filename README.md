@@ -65,6 +65,10 @@ In the toolbar:
 
 These set ordinary filters, so they appear as pills in the query bar, in the sidebar and in saved views, and removing the pill clears them. Calls that are still being evaluated don't have these metrics yet, so they drop out while either filter is on.
 
+### Searching transcripts
+
+After each load, the calls' transcripts are fetched in the background (a few seconds for a day of calls; "Transcripts N/M…" shows progress), so free-text search and the `transcript:` field cover what was said. Only the spoken lines are kept, not tool calls. Cekura only provides these for calls, not simulation runs or 11Labs-only rows. Turn it off in ⚙ Settings.
+
 ### Columns, sorting and filtering
 
 - **Columns:** open **Columns** to show, hide and drag-reorder any field or metric found in the loaded data. Each metric shows its pass rate and failure count for the loaded calls, and there's a one-click button to show every metric with failures. Drag a header's edge to resize.
@@ -82,7 +86,8 @@ These set ordinary filters, so they appear as pills in the query bar, in the sid
   | `branch:*` / `-feedback:*` | has a value / is empty |
   | `duration:>60`, `duration:<=2:00`, `duration:[0:30 TO 2:00]` | numbers, durations (m:ss or seconds) and times (`time:[2026-10-16T09:00 TO 2026-10-16T12:00]`) |
   | `tool_call_failure:fail` | pass/fail metrics take `pass`, `fail` or `na` |
-  | anything else | free-text search across every column and ID (call, run, result, scenario, Cekura agent); `*` works as a wildcard here too |
+  | `transcript:*reschedule*` | what was said (calls only; see below) |
+  | anything else | free-text search across every column and ID (call, run, result, scenario, Cekura agent), including transcripts once loaded; `*` works as a wildcard here too |
 
   Field names are short forms of the column names (`agent`, `provider_agent`, `branch`, `result`, `scenario`, `ended_reason`…); metrics use their name in snake_case, and dynamic variables use `dv.<name>`. Searching a result ID unfolds that result.
 - **CSV:** exports the filtered rows with the visible columns, plus Cekura and provider links.
@@ -99,9 +104,9 @@ With **Group by result** on, runs from the same result fold under a result row, 
 
 ### Dynamic variables
 
-Click **Load dynamic variables** above the table to load each call's ElevenLabs or Retell dynamic variables (business, location, caller number, mode, opening hours, feature flags…). Each variable becomes a column under **Dynamic variables** in **Columns**, and a query field with a `dv.` prefix, e.g. `dv.mode:demo`, `dv.original_incoming_phone_number:+1620*` or `-dv.client_id:*`. Free-text search covers their values too, so pasting a phone number finds the call.
+Each call's ElevenLabs or Retell dynamic variables load in the background after the list does (business, location, caller number, mode, opening hours, feature flags…). Each variable becomes a column under **Dynamic variables** in **Columns**, and a query field with a `dv.` prefix, e.g. `dv.mode:demo`, `dv.original_incoming_phone_number:+1620*` or `-dv.client_id:*`. Free-text search covers their values too, so pasting a phone number finds the call.
 
-They add 5–25KB per call, so like branches they're only fetched when you ask, or while a variable column is shown, filtered, sorted or searched on (a saved view that uses one loads them automatically). Credentials (`secret__*`, auth tokens) and long blobs such as the knowledge base or service catalog are left out. Simulation runs and 11Labs-only rows (including ones from agents added in the **11Labs: Agents** menu) get them as well; those come from ElevenLabs one conversation at a time, so a few hundred take about 10 seconds.
+They add 5–25KB per call (a day of calls takes a few seconds). If you turn background loading off in ⚙ Settings, a **Load dynamic variables** link appears above the table instead, and they also load whenever a variable column is shown, filtered, sorted or searched on. Credentials (`secret__*`, auth tokens) and long blobs such as the knowledge base or service catalog are left out. Simulation runs and 11Labs-only rows (including ones from agents added in the **11Labs: Agents** menu) get them as well; those come from ElevenLabs one conversation at a time, so a few hundred take about 10 seconds.
 
 ### 11Labs analysis
 
