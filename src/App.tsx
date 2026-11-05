@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, fetchCallBranches, fetchCallVariables, fetchRunVariables, getByProviderIds, refreshCallsAndRuns, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
+import { ApiError, fetchCallBranches, fetchCallTranscripts, fetchCallVariables, fetchRunVariables, getByProviderIds, refreshCallsAndRuns, slimVariables, listCalls, listKnownProviderIds, listProjects, listProviderAgents, listSims, type ProviderAgents, type Project } from './api'
 import { conversationToCallLog, getConversationAnalysis, getConversationAsCallLog, getConversationVariables, getFreshConversationAsCallLog, listConversations } from './elevenlabs'
 import { isAnalysisKey, isVariableKey, progressState, buildModel, DEFAULT_METRIC_NAMES, DEFAULT_VISIBLE, findMetricKey, SIM_COLUMNS, withDefaultMetrics, type Column } from './columns'
 import { applyFilters, applySort, type Filter, type SortSpec, type ViewState } from './filters'
@@ -355,6 +355,7 @@ export default function App() {
           ...c,
           variables: c.variables ?? old.variables,
           analysis: c.analysis ?? old.analysis,
+          transcriptText: c.transcriptText !== undefined ? c.transcriptText : old.transcriptText,
           branchId: c.branchId !== undefined ? c.branchId : old.branchId,
           providerAgentId: c.providerAgentId ?? old.providerAgentId,
         }
@@ -437,11 +438,12 @@ export default function App() {
     return () => ctrl.abort()
   }, [needsBranch, meta, settings])
 
-  // Dynamic variables add 5-25KB per call, so like branches they're only fetched once asked for
-  // or while a variable column is shown, filtered, sorted or searched on.
+  // Dynamic variables add 5-25KB per call. They load in the background after each load unless that's
+  // turned off in Settings, in which case they're fetched once asked for or while a variable column
+  // is shown, filtered, sorted or searched on.
   const [wantVariables, setWantVariables] = useState(false)
   const [variableProgress, setVariableProgress] = useState<{ done: number; total: number } | null>(null)
-  const needsVariables = wantVariables || /\bdv\./i.test(search) ||
+  const needsVariables = settings.backgroundVariables || wantVariables || /\bdv\./i.test(search) ||
     view.visible.some(isVariableKey) || view.filters.some((f) => isVariableKey(f.col)) || view.sort.some((s) => isVariableKey(s.col))
   useEffect(() => {
     if (!needsVariables || !meta) return
@@ -583,6 +585,25 @@ export default function App() {
       .finally(() => { if (!ctrl.signal.aborted) setAnalysisProgress(null) })
     return () => { flush(); ctrl.abort(); setAnalysisProgress(null) }
   }, [needsAnalysis, meta, settings])
+
+  // Transcripts load quietly after each load (calls only: Cekura doesn't list them for runs), so
+  // search and `transcript:` cover what was said. Calls still in progress get theirs on a later load.
+  const [transcriptProgress, setTranscriptProgress] = useState<{ done: number; total: number } | null>(null)
+  useEffect(() => {
+    if (!settings.backgroundTranscripts || !meta) return
+    const ids = callsRef.current.filter((c) => c.source === 'call' && c.transcriptText === undefined && !progressState(c)).map((c) => c.id)
+    if (ids.length === 0) return
+    const ctrl = new AbortController()
+    let done = 0
+    setTranscriptProgress({ done, total: ids.length })
+    fetchCallTranscripts(settings, meta.projectId, ids, meta, (found) => {
+      if (ctrl.signal.aborted) return
+      done += found.size
+      setTranscriptProgress({ done, total: ids.length })
+      setCalls((prev) => prev.map((c) => (c.source === 'call' && found.has(c.id) ? { ...c, transcriptText: found.get(c.id) } : c)))
+    }, ctrl.signal).catch(() => {}).finally(() => { if (!ctrl.signal.aborted) setTranscriptProgress(null) })
+    return () => { ctrl.abort(); setTranscriptProgress(null) }
+  }, [meta, settings])
 
   const colMap = useMemo(() => new Map(model.columns.map((c) => [c.key, c])), [model.columns])
 
@@ -952,6 +973,7 @@ export default function App() {
                 )}
                 {branchProgress && <span className="branch-progress">Loading 11Labs branches {branchProgress.done}/{branchProgress.total}…</span>}
                 {variableProgress && <span className="branch-progress">Loading dynamic variables {variableProgress.done}/{variableProgress.total}…</span>}
+                {transcriptProgress && <span className="branch-progress muted" title="Loaded in the background so search covers what was said">Transcripts {transcriptProgress.done.toLocaleString()}/{transcriptProgress.total.toLocaleString()}…</span>}
                 {analysisProgress && <span className="branch-progress">Loading 11Labs analysis {analysisProgress.done}/{analysisProgress.total}…</span>}
                 {meta && !needsAnalysis && !analysisProgress && calls.some(analysisTodo) && (
                   <button className="link" onClick={() => setWantAnalysis(true)}

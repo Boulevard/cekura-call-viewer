@@ -43,6 +43,20 @@ export function SettingsDialog({ settings, onSave, onClose, viewedCount, onClear
             <span className="muted small"> · only while the tab is visible; skips custom ranges that have already ended</span>
           </span>
         </label>
+        <label className="settings-check">
+          <input type="checkbox" checked={s.backgroundVariables} onChange={(e) => set('backgroundVariables', e.target.checked)} />
+          <span>
+            Load dynamic variables in the background
+            <span className="muted small"> · 5-25KB per call; when off, load them from the link above the table</span>
+          </span>
+        </label>
+        <label className="settings-check">
+          <input type="checkbox" checked={s.backgroundTranscripts} onChange={(e) => set('backgroundTranscripts', e.target.checked)} />
+          <span>
+            Load transcripts in the background
+            <span className="muted small"> · so search covers what was said (calls only; about 6KB per call)</span>
+          </span>
+        </label>
         <div className="settings-viewed">
           <div>
             Viewed history

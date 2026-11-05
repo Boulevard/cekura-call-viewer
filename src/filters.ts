@@ -46,7 +46,8 @@ const globCache = new Map<string, RegExp>()
 export function globRegex(pattern: string): RegExp {
   let re = globCache.get(pattern)
   if (!re) {
-    re = new RegExp(`^${pattern.toLowerCase().split('*').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+    // `s` so `*` also spans line breaks (transcripts and summaries are multi-line).
+    re = new RegExp(`^${pattern.toLowerCase().split('*').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 's')
     globCache.set(pattern, re)
   }
   return re

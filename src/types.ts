@@ -66,6 +66,11 @@ export interface CallLog {
    * Undefined until fetched, since they're only loaded while a variable column is in use.
    */
   variables?: Record<string, string> | null
+  /**
+   * The spoken lines of the transcript ("Agent: …" / "Caller: …"), for search. Undefined until the
+   * background load gets to it; only Cekura calls have one.
+   */
+  transcriptText?: string | null
   /** ElevenLabs' own analysis of the conversation; undefined until fetched, null for non-ElevenLabs calls. */
   analysis?: ElAnalysis | null
   /** Loaded only because its call ID was pasted into the IDs box; dropped when that's cleared. */
