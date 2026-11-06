@@ -210,7 +210,11 @@ function CallContext({ call, detail }: { call: CallLog; detail: Detail | null })
   const business = metricText(call, 'Info: Business Name') ?? str(dv.business_name)
   const businessLine = metricText(call, 'to_number') ?? str(md.to_number) ?? str(dv.system__called_number) ?? str(detail?.agent_number)
   const caller = str(dv.original_incoming_phone_number) ?? str(call.customer_number)
-  if (!mode && !business && !businessLine && !caller) return null
+  // Variables arrive as `urn:blvd:Location:<uuid>`; the bare UUID is what lookups and admin tools take.
+  const bareId = (v: string | null) => v?.replace(/^urn:blvd:\w+:/, '') ?? null
+  const businessId = bareId(metricText(call, 'business_id') ?? str(dv.business_id) ?? str(call.variables?.business_id))
+  const locationId = bareId(str(dv.location_id) ?? str(call.variables?.location_id))
+  if (!mode && !business && !businessLine && !caller && !businessId && !locationId) return null
   return (
     <div className="detail-context">
       {mode && <span className={`mode-chip ${mode === 'live' ? 'live' : 'demo'}`}>{mode.toUpperCase()}</span>}
@@ -223,6 +227,16 @@ function CallContext({ call, detail }: { call: CallLog; detail: Detail | null })
       {caller && caller !== businessLine && (
         <span className="ctx-chip phone" title="The number the call came from">
           <span className="muted">Caller</span> {caller}<CopyIcon text={caller} title="Copy phone number" />
+        </span>
+      )}
+      {businessId && (
+        <span className="ctx-chip id" title={businessId}>
+          <span className="muted">Business</span> <span className="mono">{businessId.slice(0, 8)}…</span><CopyIcon text={businessId} title="Copy business ID" />
+        </span>
+      )}
+      {locationId && (
+        <span className="ctx-chip id" title={locationId}>
+          <span className="muted">Location</span> <span className="mono">{locationId.slice(0, 8)}…</span><CopyIcon text={locationId} title="Copy location ID" />
         </span>
       )}
     </div>
