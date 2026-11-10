@@ -125,6 +125,8 @@ Click a row, or press `Enter`. The panel shows:
 - The call summary, dynamic variables, latency, cost and raw JSON.
 - For simulation runs, the scenario instructions and the expected-outcome breakdown.
 
+Drag the panel's left edge to make it wider or narrower (or focus the edge and use ← / →); double-click it to go back to the default width. The width is remembered.
+
 Each call or run has its own URL (`#call=<id>`, `#run=<id>`, or `#el=<conversation id>` for 11Labs-only rows), so you can share links to them.
 
 The detail header also links to Boulevard's backend logs in Datadog:

@@ -12,6 +12,62 @@ import { Transcript } from './Transcript'
 
 export type DetailPane = 'metrics' | 'main'
 
+export const DETAIL_MIN_WIDTH = 600
+// Room left for the call list (plus the folded sidebar rail) so it never collapses.
+const LIST_MIN_WIDTH = 420
+const KEY_STEP = 24
+
+export function clampDetailWidth(w: number) {
+  return Math.round(Math.max(DETAIL_MIN_WIDTH, Math.min(w, window.innerWidth - LIST_MIN_WIDTH)))
+}
+
+function DetailResizer({ width, onResize }: { width: number | null; onResize: (width: number | null) => void }) {
+  const currentWidth = (el: HTMLElement) => width ?? el.parentElement!.getBoundingClientRect().width
+
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const handle = e.currentTarget
+    const startX = e.clientX
+    const startW = currentWidth(handle)
+    // Capturing the pointer keeps the drag alive when it leaves the window or crosses iframes like the recording player.
+    handle.setPointerCapture(e.pointerId)
+    const move = (ev: PointerEvent) => onResize(clampDetailWidth(startW - (ev.clientX - startX)))
+    const up = () => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+      document.body.classList.remove('resizing')
+    }
+    document.body.classList.add('resizing')
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? KEY_STEP * 4 : KEY_STEP
+    let next: number | null
+    if (e.key === 'ArrowLeft') next = currentWidth(e.currentTarget) + step
+    else if (e.key === 'ArrowRight') next = currentWidth(e.currentTarget) - step
+    else if (e.key === 'Home') next = DETAIL_MIN_WIDTH
+    else if (e.key === 'End') next = Number.POSITIVE_INFINITY
+    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onResize(null); return }
+    else return
+    // Stop the app's global shortcuts from also treating the arrows as list navigation.
+    e.preventDefault()
+    e.stopPropagation()
+    onResize(clampDetailWidth(next))
+  }
+
+  return (
+    <div className="detail-resizer" role="separator" aria-orientation="vertical" aria-label="Resize call details"
+      aria-valuenow={width ?? undefined} aria-valuemin={DETAIL_MIN_WIDTH} tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={startResize} onDoubleClick={() => onResize(null)} onKeyDown={onKeyDown} />
+  )
+}
+
 interface Props {
   /** The pane the keyboard scrolls; outlined so it's clear which one ↑/↓ move. */
   activePane: DetailPane | null
@@ -26,9 +82,12 @@ interface Props {
   onClose: () => void
   onPrev: () => void
   onNext: () => void
+  /** Panel width in px; null means the default responsive width. */
+  width: number | null
+  onResize: (width: number | null) => void
 }
 
-export function CallDetail({ row, settings, position, onClose, onPrev, onNext, activePane, onActivatePane, paneRef, viewedAt, onMarkUnviewed }: Props) {
+export function CallDetail({ row, settings, position, onClose, onPrev, onNext, activePane, onActivatePane, paneRef, viewedAt, onMarkUnviewed, width, onResize }: Props) {
   const call = row.call
   const [detail, setDetail] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -86,7 +145,8 @@ export function CallDetail({ row, settings, position, onClose, onPrev, onNext, a
   }
 
   return (
-    <aside className="detail">
+    <aside className="detail" style={width == null ? undefined : { width }}>
+      <DetailResizer width={width} onResize={onResize} />
       <header className="detail-head">
         <div className="detail-title">
           <div className="detail-nav">
