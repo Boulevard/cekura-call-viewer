@@ -12,7 +12,10 @@ export function load<T>(key: string, fallback: T): T {
 }
 
 export function save(key: string, value: unknown) {
-  localStorage.setItem(PREFIX + key, JSON.stringify(value))
+  // Storage can be full or blocked (private mode); losing a preference shouldn't break the app.
+  try {
+    localStorage.setItem(PREFIX + key, JSON.stringify(value))
+  } catch {}
 }
 
 export function usePersistentState<T>(key: string, fallback: T | (() => T)) {

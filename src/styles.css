@@ -376,7 +376,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 
 /* detail */
-.detail { width: 56vw; min-width: 600px; max-width: 1400px; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+.detail { position: relative; flex-shrink: 0; width: clamp(600px, 56vw, 1400px); min-width: 600px; max-width: calc(100vw - 420px); border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+.detail-resizer { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; touch-action: none; }
+.detail-resizer:hover, .detail-resizer:focus-visible, body.resizing .detail-resizer { background: var(--accent); opacity: 0.5; outline: none; }
 .detail-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .detail-title { display: flex; align-items: center; gap: 10px; }
 .detail-title h2 { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -9,7 +9,7 @@ import type { CallLog } from './types'
 import { downloadCsv } from './csv'
 import { buildDisplay, groupKey } from './grouping'
 import { CallTable, ROW_HEIGHT } from './components/CallTable'
-import { CallDetail, type DetailPane } from './components/CallDetail'
+import { CallDetail, clampDetailWidth, type DetailPane } from './components/CallDetail'
 import { ColumnPicker } from './components/ColumnPicker'
 import { Popover } from './components/Popover'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -164,6 +164,7 @@ export default function App() {
   const [theme, toggleTheme] = useTheme()
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistentState('sidebarCollapsed', false)
   const [sidebarWidth, setSidebarWidth] = usePersistentState('sidebarWidth', 248)
+  const [detailWidth, setDetailWidth] = usePersistentState<number | null>('detailWidth', null)
   const [facetKeys, setFacetKeys] = usePersistentState<string[]>('facets', DEFAULT_FACETS)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -1028,7 +1029,8 @@ export default function App() {
             viewedAt={viewed[viewKey(selectedRow.call)]} onMarkUnviewed={() => { viewedTimer.current && clearTimeout(viewedTimer.current); markViewed([viewKey(selectedRow.call)], false) }}
             position={selectedIndex >= 0 ? `${selectedIndex + 1} / ${sorted.length}` : 'not in filtered list'}
             onClose={() => select(null)} onPrev={() => step(-1)} onNext={() => step(1)}
-            activePane={detailPane} onActivatePane={setDetailPane} paneRef={paneRef} />
+            activePane={detailPane} onActivatePane={setDetailPane} paneRef={paneRef}
+            width={typeof detailWidth === 'number' ? clampDetailWidth(detailWidth) : null} onResize={setDetailWidth} />
         )}
       </div>
 
