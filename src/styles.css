@@ -184,7 +184,8 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .project-empty { padding: 8px; }
 
 /* layout */
-.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+/* clip, not hidden: focusing an input in a popover that briefly overflows would scroll a hidden container sideways */
+.app { display: flex; flex-direction: column; height: 100vh; overflow: clip; }
 .toolbar { display: flex; align-items: center; gap: 6px; row-gap: 8px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; min-width: 0; }
 .toolbar > * { flex-shrink: 0; }
 .toolbar > .search { flex-shrink: 1; }
