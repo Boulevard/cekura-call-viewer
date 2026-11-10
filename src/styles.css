@@ -234,11 +234,12 @@ body.resizing { cursor: col-resize; user-select: none; }
 .side-add { margin: 14px 6px 0; }
 
 /* table card */
-.table-card { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.table-card { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .table-card-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; min-height: 46px; }
 .table-meta { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .table-meta b { color: var(--text); font-weight: 600; }
-.table-card-body { flex: 1; display: flex; min-height: 0; }
+/* The card itself can't clip, or the Columns popover in its header would be cut off. */
+.table-card-body { flex: 1; display: flex; min-height: 0; overflow: hidden; border-radius: 0 0 11px 11px; }
 
 .chip-wrap, .popover-anchor { position: relative; }
 
@@ -549,7 +550,9 @@ table.mini tr.bad td { color: var(--fail); }
 
 /* query bar: a box that looks like an input, holding filter pills and the text field */
 .table-card-head.sub { min-height: 0; padding: 6px 14px; }
-.query-bar { position: relative; flex: 1; min-width: 300px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 4px 34px 4px 30px; min-height: 38px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; cursor: text; }
+.query-bar { position: relative; flex: 1; min-width: min(200px, 100%); display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 4px 34px 4px 30px; min-height: 38px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; cursor: text; }
+.columns-anchor { flex-shrink: 0; margin-left: auto; align-self: stretch; display: flex; align-items: center; }
+.columns-btn { height: 38px; }
 .query-bar.focused { border-color: var(--accent); outline: 2px solid var(--accent-soft); }
 .query-bar.has-issues { border-color: var(--warn); }
 .query-icon { position: absolute; left: 11px; top: 9px; color: var(--muted); font-size: 15px; pointer-events: none; }

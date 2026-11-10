@@ -897,15 +897,6 @@ export default function App() {
           }} />
         <span className="spacer" />
         <div className="popover-anchor">
-          <button className="btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>
-          {popover === 'columns' && (
-            <Popover onClose={() => setPopover(null)} align="right" className="xwide">
-              <ColumnPicker columns={model.columns} visible={view.visible} rows={filtered} defaultVisible={withDefaultMetrics(DEFAULT_VISIBLE, model.columns)}
-                onChange={(visible) => setView((v) => ({ ...v, visible }))} />
-            </Popover>
-          )}
-        </div>
-        <div className="popover-anchor">
           <button className={`btn view-btn ${activeView ? 'has-view' : ''}`} onClick={() => setPopover('views')} title="Saved views">
             <span className="ellipsis">{activeView ? activeView.name : 'Views'}</span>
             {viewModified && <span className="view-dot" title="Unsaved changes" />}
@@ -955,6 +946,15 @@ export default function App() {
               <QueryBar ref={searchRef} onSubmit={() => setJumpRequest((n) => n + 1)} columns={model.columns} colMap={colMap} rows={model.rows} filters={view.filters} search={search}
                 facetRowsFor={facetRowsFor}
                 onChange={(filters, freeText) => { if (filters) setView((v) => ({ ...v, filters })); setSearch(freeText) }} />
+              <div className="popover-anchor columns-anchor">
+                <button className="btn columns-btn" onClick={() => setPopover('columns')}>Columns <span className="muted">{visibleCols.length}</span></button>
+                {popover === 'columns' && (
+                  <Popover onClose={() => setPopover(null)} align="right" className="xwide">
+                    <ColumnPicker columns={model.columns} visible={view.visible} rows={filtered} defaultVisible={withDefaultMetrics(DEFAULT_VISIBLE, model.columns)}
+                      onChange={(visible) => setView((v) => ({ ...v, visible }))} />
+                  </Popover>
+                )}
+              </div>
             </div>
             <div className="table-card-head sub">
               <div className="table-meta">
